@@ -43,6 +43,7 @@ PlasmoidItem {
     property real pollDelay: 0
     property real pollProgress: 0
     property real pollStartTime: 0
+    property bool isStale: false
 
     compactRepresentation: CompactRepresentation {}
     fullRepresentation: FullRepresentation {
@@ -87,10 +88,17 @@ PlasmoidItem {
 
     Timer {
         id: timeAgoTimer
-        interval: 10000
+        interval: 1000
         repeat: true
         running: true
-        onTriggered: updateTimeAgo()
+        onTriggered: {
+            updateTimeAgo();
+            if (lastTimestamp > 0) {
+                var staleAge = 300000 + pollPadding * 1000;
+                isStale = Date.now() - lastTimestamp > staleAge;
+                if (isStale) glucoseColor = Qt.rgba(0.6, 0.6, 0.6, 0.8);
+            }
+        }
     }
 
     function formatTimeAgo(timestamp) {
@@ -166,9 +174,10 @@ PlasmoidItem {
                     }
                     glucoseValue = Units.convertValue(sgv, apiUnit, units);
                     glucose = units === Units.Unit.MMOL_L ? glucoseValue.toFixed(1) : glucoseValue;
-                    glucoseColor = Units.getGlucoseColor(glucoseValue, units);
-                    lastTimestamp = bgs.datetime;
-                    updateTimeAgo();
+                glucoseColor = Units.getGlucoseColor(glucoseValue, units);
+                isStale = false;
+                lastTimestamp = bgs.datetime;
+                updateTimeAgo();
 
                     trend = Charsets.getTrendArrow(charset, bgs.trend);
                     scheduleNextPoll(false);
