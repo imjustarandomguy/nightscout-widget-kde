@@ -155,7 +155,7 @@ ColumnLayout {
             major.lineWidth: 2
             major.color: Qt.rgba(0.8, 0.8, 0.8, 0)
 
-            minor.count: 8
+            minor.count: 5
             minor.lineWidth: 1
             minor.color: Qt.rgba(0.8, 0.8, 0.8, 0.2)
         }
@@ -184,6 +184,14 @@ ColumnLayout {
             anchors.fill: lineChart
             anchors.margins: Kirigami.Units.mediumSpacing
             clip: true
+
+            property int agoTick: 0
+            Timer {
+                interval: 10000
+                repeat: true
+                running: true
+                onTriggered: agoTick++
+            }
 
             function treatmentColor(t) {
                 if (t.carbs) {
@@ -223,7 +231,7 @@ ColumnLayout {
                     property var treatment: modelData
                     property var timestamp: treatmentOverlay.treatmentTimestamp(treatment)
                     property real xPos: (timestamp - chartTimeStart) / (chartTimeEnd - chartTimeStart) * parent.width
-                    property string timeAgoText: Math.floor((Date.now() - timestamp) / 60000) + "m ago"
+                    property string timeAgoText: treatmentOverlay.agoTick >= 0 ? Math.floor((Date.now() - timestamp) / 60000) + "m ago" : ""
 
                     x: xPos - width / 2
                     y: 2

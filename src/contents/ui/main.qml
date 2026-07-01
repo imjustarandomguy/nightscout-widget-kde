@@ -114,7 +114,7 @@ PlasmoidItem {
         }
         if (lastTimestamp > 0) {
             var next = lastTimestamp + 300000 + pollPadding * 1000;
-            var delay = Math.max(1000, next - Date.now());
+            var delay = Math.max(30000, next - Date.now());
             pollDelay = delay;
             pollStartTime = Date.now();
             pollProgress = 0;
@@ -184,7 +184,8 @@ PlasmoidItem {
         });
 
         // get last 3 hours' data for the chart
-        Utils.sendJsonRequest(sanitizedNightscoutURL + "/api/v1/entries.json?count=37&token=" + nightscoutToken, function (response) {
+        var sinceDate = Date.now() - 3 * 60 * 60 * 1000;
+        Utils.sendJsonRequest(sanitizedNightscoutURL + "/api/v1/entries.json?find[date][$gte]=" + sinceDate + "&count=100&token=" + nightscoutToken, function (response) {
             try {
                 if (response.status == 200 && response.content) {
                     var j = response.content;
@@ -202,7 +203,7 @@ PlasmoidItem {
                         var date = new Date(entry.date);
                         var paddedMinute = Utils.padTo2Digits(date.getMinutes());
 
-                        if (i++ % 4 == 0) {
+                        if (i++ % 6 == 0) {
                             var paddedHour = Utils.padTo2Digits(date.getHours());
                             labelArray.push(paddedHour + ":" + paddedMinute);
                         } else {
