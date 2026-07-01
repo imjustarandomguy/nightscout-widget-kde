@@ -7,31 +7,68 @@ import org.kde.plasma.extras as PlasmaExtras
 import org.kde.kquickcontrolsaddons
 import org.kde.plasma.components
 
-ColumnLayout {
+Item {
+    id: rootWidget
+    
+    Layout.preferredWidth: glucoseLabel.implicitWidth + glucoseTrendSpacer.implicitWidth + trendLabel.implicitWidth + mainSpacer.implicitWidth + timeLabel.implicitWidth
+    Layout.preferredHeight: Math.max(glucoseLabel.implicitHeight, trendLabel.implicitHeight, timeLabel.implicitHeight)
 
-    anchors.fill: parent
-
-    Label {
-        id: currentBG_compact
-        text: glucose + "\n" + trend
-
+    Item {
         anchors.fill: parent
 
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
+        Label {
+            id: glucoseLabel
+            text: glucose
+            color: glucoseColor
+            font.pointSize: 24
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            font.bold: true
+        }
 
-        MouseArea {
-            id: mouseArea
+        Item {
+            id: glucoseTrendSpacer
+            implicitWidth: 2
+            anchors.left: glucoseLabel.right
+        }
 
-            anchors.fill: parent
+        Label {
+            id: trendLabel
+            text: trend
+            color: glucoseColor
+            font.pointSize: 24
+            anchors.left: glucoseTrendSpacer.right
+            anchors.verticalCenter: parent.verticalCenter
+            font.bold: true
+        }
 
-            property bool wasExpanded: false
+        Item {
+            id: mainSpacer
+            implicitWidth: 12
+            anchors.left: trendLabel.right
+            anchors.right: timeLabel.left
+        }
 
-            hoverEnabled: true
-            onPressed: wasExpanded = root.expanded
-            onClicked: mouse => {
-                root.expanded = !wasExpanded;
-            }
+        Label {
+            id: timeLabel
+            text: timeAgo
+            color: "white"
+            font.pointSize: 10
+            opacity: 0.7
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            font.bold: true
+        }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+
+        property bool wasExpanded: false
+        onPressed: wasExpanded = root.expanded
+        onClicked: mouse => {
+            root.expanded = !wasExpanded;
         }
     }
 }

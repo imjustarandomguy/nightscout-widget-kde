@@ -3,19 +3,34 @@ function sendJsonRequest(url, callback) {
 
     request.onreadystatechange = function () {
         if (request.readyState === XMLHttpRequest.DONE) {
-            let response = {
-                status: request.status,
-                headers: request.getAllResponseHeaders(),
-                contentType: request.responseType,
-                content: JSON.parse(request.response)
-            };
-
-            callback(response);
+            var content = null;
+            try {
+                if (request.responseText) content = JSON.parse(request.responseText);
+            } catch(e) {}
+            callback({ status: request.status, content: content });
         }
     }
 
     request.open("GET", url);
     request.send();
+}
+
+function sendJsonPost(url, body, callback) {
+    let request = new XMLHttpRequest();
+
+    request.onreadystatechange = function () {
+        if (request.readyState === XMLHttpRequest.DONE) {
+            var content = null;
+            try {
+                if (request.responseText) content = JSON.parse(request.responseText);
+            } catch(e) {}
+            callback({ status: request.status, content: content });
+        }
+    }
+
+    request.open("POST", url);
+    request.setRequestHeader("Content-Type", "application/json");
+    request.send(JSON.stringify(body));
 }
 
 function padTo2Digits(num) {
