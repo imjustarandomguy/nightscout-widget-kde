@@ -57,7 +57,7 @@ function getGlucoseColor(value, unit) {
     if (value <= tYellowLow)   return "#f59e0b";
     if (value >= tRedHigh)     return "#ef4444";
     if (value >= tYellowHigh)  return "#f59e0b";
-    return "#22c55e";
+    return "#00c950";
 }
 
 function getUnitText(unit) {

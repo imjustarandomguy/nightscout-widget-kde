@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Controls
+import QtQuick.Effects
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasmoid
@@ -34,15 +36,24 @@ Item {
                 var r = width / 2 - 2;
                 ctx.beginPath();
                 ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-                ctx.strokeStyle = Qt.rgba(0.3, 0.6, 1, 0.11);
+                ctx.strokeStyle = Qt.rgba(0.443, 0.878, 0.957, 0.1);
                 ctx.lineWidth = 3;
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * progress);
-                ctx.strokeStyle = Qt.rgba(0.3, 0.6, 1, 0.99);
+                ctx.strokeStyle = Qt.rgba(0.443, 0.878, 0.957, 1);
                 ctx.lineWidth = 3;
                 ctx.lineCap = "round";
                 ctx.stroke();
+            }
+
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: "black"
+                shadowBlur: 0.5
+                shadowHorizontalOffset: 0
+                shadowVerticalOffset: 0
             }
         }
 
@@ -51,10 +62,19 @@ Item {
             text: glucose
             color: glucoseColor
             font.pointSize: 24
-            anchors.left: pollRing.right
-            anchors.leftMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
             font.bold: true
+            anchors.left: pollRing.right
+            anchors.leftMargin: 6
+            anchors.verticalCenter: parent.verticalCenter
+
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: "black"
+                shadowBlur: 0.5
+                shadowHorizontalOffset: 0
+                shadowVerticalOffset: 0
+            }
         }
 
         Label {
@@ -62,10 +82,19 @@ Item {
             text: trend
             color: glucoseColor
             font.pointSize: 24
+            font.bold: true
             anchors.left: glucoseLabel.right
             anchors.leftMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            font.bold: true
+
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: "black"
+                shadowBlur: 0.5
+                shadowHorizontalOffset: 0
+                shadowVerticalOffset: 0
+            }
         }
     }
 
