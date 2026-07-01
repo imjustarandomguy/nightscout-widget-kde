@@ -34,12 +34,12 @@ Item {
                 var r = width / 2 - 2;
                 ctx.beginPath();
                 ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-                ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.15);
+                ctx.strokeStyle = Qt.rgba(0.3, 0.6, 1, 0.11);
                 ctx.lineWidth = 3;
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * progress);
-                ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.85);
+                ctx.strokeStyle = Qt.rgba(0.3, 0.6, 1, 0.99);
                 ctx.lineWidth = 3;
                 ctx.lineCap = "round";
                 ctx.stroke();
