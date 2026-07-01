@@ -40,6 +40,9 @@ PlasmoidItem {
     property var treatments: []
     property var chartTimeStart: 0
     property var chartTimeEnd: 0
+    property real pollDelay: 0
+    property real pollProgress: 0
+    property real pollStartTime: 0
 
     compactRepresentation: CompactRepresentation {}
     fullRepresentation: FullRepresentation {
@@ -102,6 +105,9 @@ PlasmoidItem {
 
     function scheduleNextPoll(fromError) {
         if (fromError) {
+            pollDelay = 30000;
+            pollStartTime = Date.now();
+            pollProgress = 0;
             textTimer.interval = 30000;
             textTimer.start();
             return;
@@ -109,8 +115,25 @@ PlasmoidItem {
         if (lastTimestamp > 0) {
             var next = lastTimestamp + 300000 + pollPadding * 1000;
             var delay = Math.max(1000, next - Date.now());
+            pollDelay = delay;
+            pollStartTime = Date.now();
+            pollProgress = 0;
             textTimer.interval = delay;
             textTimer.start();
+        }
+    }
+
+    Timer {
+        id: pollProgressTimer
+        interval: 200
+        repeat: true
+        running: textTimer.running
+        onTriggered: {
+            if (pollDelay > 0) {
+                pollProgress = Math.min(0.999, (Date.now() - pollStartTime) / pollDelay);
+            } else {
+                pollProgress = 0;
+            }
         }
     }
 
