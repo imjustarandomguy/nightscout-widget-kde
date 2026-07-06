@@ -28,5 +28,8 @@
         <entry name="chartMax" type="Double">
             <default>15</default>
         </entry>
+        <entry name="lastSelectedType" type="String">
+            <default>carbs</default>
+        </entry>
     </group>
 </kcfg>

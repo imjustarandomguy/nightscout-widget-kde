@@ -23,6 +23,7 @@ PlasmoidItem {
     property int units: Plasmoid.configuration.units
     property real chartMin: Plasmoid.configuration.chartMin
     property real chartMax: Plasmoid.configuration.chartMax
+    property string lastSelectedType: Plasmoid.configuration.lastSelectedType
 
     property real usedChartMin: 0
     property real usedChartMax: 0
@@ -69,6 +70,7 @@ PlasmoidItem {
     onChartMinChanged: configChanged()
     onChartMaxChanged: configChanged()
     onPollPaddingChanged: configChanged()
+    onLastSelectedTypeChanged: Plasmoid.configuration.lastSelectedType = lastSelectedType
 
     Timer {
         id: deferTimer
@@ -150,7 +152,62 @@ PlasmoidItem {
         usedChartMax = Units.getUnitAwareChartBound(chartMax);
     }
 
-    // Read the data from NightScout using the provided configuration.
+    // Refresh only chart and treatments data, without updating glucose/value/timers.
+    function reloadChart() {
+        if (Utils.isConfigDefault()) return;
+
+        updateChartBounds();
+
+        var sinceDate = Date.now() - 3 * 60 * 60 * 1000;
+        Utils.sendJsonRequest(sanitizedNightscoutURL + "/api/v1/entries.json?find[date][$gte]=" + sinceDate + "&count=100&token=" + nightscoutToken, function (response) {
+            try {
+                if (response.status == 200 && response.content) {
+                    var j = response.content;
+                    if (!Array.isArray(j)) return;
+                    var valArray = [];
+                    var labelArray = [];
+                    var i = 0;
+                    for (let entry of j.reverse()) {
+                        var _glucose = Units.getUnitAwareValue(parseFloat(entry.sgv), units);
+                        valArray.push(_glucose);
+                        var date = new Date(entry.date);
+                        var paddedMinute = Utils.padTo2Digits(date.getMinutes());
+                        if (i++ % 6 == 0) {
+                            var paddedHour = Utils.padTo2Digits(date.getHours());
+                            labelArray.push(paddedHour + ":" + paddedMinute);
+                        } else {
+                            labelArray.push("");
+                        }
+                    }
+                    labelSources = labelArray;
+                    valueSources = valArray;
+                    if (j.length > 0) {
+                        chartTimeStart = j[0].date;
+                        chartTimeEnd = j[j.length - 1].date;
+                    }
+                    if (Math.max(...valArray) > usedChartMax) {
+                        usedChartMax = Math.max(...valArray);
+                    }
+                    if (Math.min(...valArray) < usedChartMin) {
+                        usedChartMin = Math.min(...valArray);
+                    }
+                }
+            } catch(e) {}
+        });
+
+        var sinceTime = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+        Utils.sendJsonRequest(sanitizedNightscoutURL + "/api/v1/treatments.json?find[created_at][$gte]=" + sinceTime + "&token=" + nightscoutToken, function (response) {
+            try {
+                if (response.status == 200 && response.content) {
+                    if (Array.isArray(response.content)) {
+                        treatments = response.content;
+                    }
+                }
+            } catch(e) {}
+        });
+    }
+
+    // Read all data from NightScout using the provided configuration.
     function readData() {
 
         if (Utils.isConfigDefault()) {
