@@ -11,8 +11,16 @@ import org.kde.plasma.components
 
 Item {
     id: rootWidget
-    
-    Layout.preferredWidth: pollRing.width + 4 + glucoseLabel.implicitWidth + 2 + trendLabel.implicitWidth
+
+    // All intrinsic sizes derive from the panel-provided height so the widget
+    // looks right both in short panels (e.g. 24-28px) and tall ones, instead of
+    // the previous hard-coded 24pt fonts and 24px ring that overflowed a
+    // short panel and looked tiny in a tall one.
+    readonly property int panelHeight: Math.max(rootWidget.height, 16)
+    readonly property int ringSize: Math.min(panelHeight, 24)
+    readonly property int labelSize: Math.max(10, Math.round(panelHeight * 0.99))
+
+    Layout.preferredWidth: pollRing.width + Kirigami.Units.smallSpacing + glucoseLabel.implicitWidth + 2 + trendLabel.implicitWidth
     Layout.preferredHeight: Math.max(glucoseLabel.implicitHeight, trendLabel.implicitHeight, pollRing.height)
 
     Item {
@@ -20,8 +28,8 @@ Item {
 
         Canvas {
             id: pollRing
-            width: 24
-            height: 24
+            width: rootWidget.ringSize
+            height: rootWidget.ringSize
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
 
@@ -60,11 +68,11 @@ Item {
         Label {
             id: glucoseLabel
             text: glucose
-            color: glucoseColor
-            font.pointSize: 24
+            color: isStale ? Qt.rgba(0.6, 0.6, 0.6, 0.8) : glucoseColor
+            font.pointSize: rootWidget.labelSize
             font.bold: true
             anchors.left: pollRing.right
-            anchors.leftMargin: 6
+            anchors.leftMargin: Kirigami.Units.smallSpacing
             anchors.verticalCenter: parent.verticalCenter
 
             layer.enabled: true
@@ -80,8 +88,8 @@ Item {
         Label {
             id: trendLabel
             text: trend
-            color: glucoseColor
-            font.pointSize: 24
+            color: isStale ? Qt.rgba(0.6, 0.6, 0.6, 0.8) : glucoseColor
+            font.pointSize: rootWidget.labelSize
             font.bold: true
             anchors.left: glucoseLabel.right
             anchors.leftMargin: 2
@@ -98,14 +106,13 @@ Item {
         }
     }
 
+    // Simple expand/collapse toggle. Removed the previously tracked
+    // `wasExpanded` property because PlasmoidItem.expanded is already an
+    // idempotent toggle here, and the manual tracking could desync on a
+    // drag-then-click.
     MouseArea {
         anchors.fill: parent
         hoverEnabled: true
-
-        property bool wasExpanded: false
-        onPressed: wasExpanded = root.expanded
-        onClicked: mouse => {
-            root.expanded = !wasExpanded;
-        }
+        onClicked: (mouse) => { root.expanded = !root.expanded; mouse.accepted = true }
     }
 }

@@ -1,3 +1,7 @@
+kpackagetool6 -t Plasma/Applet -u src/
+qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.refreshCurrentShell
+plasmawindowed org.kde.plasma.nightscoutwidget
+
 # Nightscout Widget for KDE
 
 Plasma 6 widget made to read BG from Nightscout's [API](https://github.com/nightscout/cgm-remote-monitor).

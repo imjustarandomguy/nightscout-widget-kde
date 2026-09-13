@@ -4,10 +4,12 @@ import QtQuick.Layouts
 import org.kde.plasma.core
 import org.kde.plasma.components
 import org.kde.plasma.plasmoid
-import org.kde.plasma.components
 import org.kde.kirigami as Kirigami
 
+import "../lib/api.js" as Api
 import "../lib/charsets.js" as Charsets
+import "../lib/constants.js" as Const
+import "../lib/format.js" as Format
 import "../lib/units.js" as Units
 import "../lib/utils.js" as Utils
 
@@ -38,6 +40,7 @@ PlasmoidItem {
 
     property var valueSources: []
     property var labelSources: []
+    property var chartTimestamps: []
     property var treatments: []
     property var chartTimeStart: 0
     property var chartTimeEnd: 0
@@ -45,6 +48,10 @@ PlasmoidItem {
     property real pollProgress: 0
     property real pollStartTime: 0
     property bool isStale: false
+
+    // Coarse widget status, consumed by FullRepresentation for the
+    // idle / error / offline overlays. Values: "idle" | "ok" | "error" | "offline"
+    property string status: "idle"
 
     compactRepresentation: CompactRepresentation {}
     fullRepresentation: FullRepresentation {
@@ -60,17 +67,42 @@ PlasmoidItem {
         }
     }
 
+    // When the display unit changes, convert the stored chart bounds so the
+    // chart keeps showing a sensible range in the new unit. The converted
+    // bounds are persisted back to the config so a downgrade round-trip is
+    // faithful to what the user actually sees on screen.
+    function applyUnitChange(fromUnit, toUnit) {
+        if (fromUnit === toUnit) {
+            configChanged();
+            return;
+        }
+        var newMin = Units.convertBound(chartMin, fromUnit, toUnit);
+        var newMax = Units.convertBound(chartMax, fromUnit, toUnit);
+        Plasmoid.configuration.chartMin = newMin;
+        Plasmoid.configuration.chartMax = newMax;
+        chartMin = newMin;
+        chartMax = newMax;
+        configChanged();
+    }
+
     onNightscoutURLChanged: {
         sanitizedNightscoutURL = Utils.trimTrailingChars(nightscoutURL, '/');
         configChanged();
     }
     onNightscoutTokenChanged: configChanged()
     onCharsetChanged: configChanged()
-    onUnitsChanged: configChanged()
     onChartMinChanged: configChanged()
     onChartMaxChanged: configChanged()
     onPollPaddingChanged: configChanged()
     onLastSelectedTypeChanged: Plasmoid.configuration.lastSelectedType = lastSelectedType
+
+    // Capture the last-seen unit so onUnitsChanged can convert chart bounds
+    // from the previous unit to the new one and persist the converted value.
+    property int _lastUnits: units
+    onUnitsChanged: {
+        applyUnitChange(_lastUnits, units);
+        _lastUnits = units;
+    }
 
     Timer {
         id: deferTimer
@@ -79,10 +111,10 @@ PlasmoidItem {
         onTriggered: readData()
     }
 
-    // Single-shot timer for smart polling
+    // Single-shot timer used for retries and smart-poll scheduling.
     Timer {
         id: textTimer
-        interval: 1000
+        interval: Const.RETRY_DELAY_MS
         repeat: false
         running: false
         onTriggered: readData()
@@ -94,41 +126,41 @@ PlasmoidItem {
         repeat: true
         running: true
         onTriggered: {
-            updateTimeAgo();
+            timeAgo = Format.timeAgo(lastTimestamp);
             if (lastTimestamp > 0) {
-                var staleAge = 300000 + pollPadding * 1000;
-                isStale = Date.now() - lastTimestamp > staleAge;
-                if (isStale) glucoseColor = Qt.rgba(0.6, 0.6, 0.6, 0.8);
+                isStale = Date.now() - lastTimestamp > Const.staleAfterMs(pollPadding);
+                // NOTE: we deliberately do NOT mutate glucoseColor here. The
+                // full and compact representations own their stale styling via
+                // the `isStale` flag; mutating the color here caused a stuck
+                // gray color bug since recovery paths never restored it.
             }
         }
     }
 
-    function formatTimeAgo(timestamp) {
-        if (!timestamp) return "";
-        var minutes = Math.floor((Date.now() - timestamp) / 60000);
-        return minutes + "m ago";
-    }
-
-    function updateTimeAgo() {
-        timeAgo = formatTimeAgo(lastTimestamp);
-    }
-
     function scheduleNextPoll(fromError) {
         if (fromError) {
-            pollDelay = 30000;
+            pollDelay = Const.RETRY_DELAY_MS;
             pollStartTime = Date.now();
             pollProgress = 0;
-            textTimer.interval = 30000;
+            textTimer.interval = Const.RETRY_DELAY_MS;
             textTimer.start();
             return;
         }
         if (lastTimestamp > 0) {
-            var next = lastTimestamp + 300000 + pollPadding * 1000;
-            var delay = Math.max(30000, next - Date.now());
+            var next = lastTimestamp + Const.POLL_PERIOD_MS + pollPadding * 1000;
+            var delay = Math.max(Const.MIN_POLL_DELAY_MS, next - Date.now());
             pollDelay = delay;
             pollStartTime = Date.now();
             pollProgress = 0;
             textTimer.interval = delay;
+            textTimer.start();
+        } else {
+            // First-run: no timestamp yet. Poll again shortly so the widget
+            // recovers from a transient error before the next sensor reading.
+            pollDelay = Const.RETRY_DELAY_MS;
+            pollStartTime = Date.now();
+            pollProgress = 0;
+            textTimer.interval = Const.RETRY_DELAY_MS;
             textTimer.start();
         }
     }
@@ -148,32 +180,44 @@ PlasmoidItem {
     }
 
     function updateChartBounds() {
-        usedChartMin = Units.getUnitAwareChartBound(chartMin);
-        usedChartMax = Units.getUnitAwareChartBound(chartMax);
+        usedChartMin = Units.roundChartBound(chartMin);
+        usedChartMax = Units.roundChartBound(chartMax);
     }
 
-    // Refresh only chart and treatments data, without updating glucose/value/timers.
+    // Refresh only chart and treatments data, without updating glucose/value/
+    // timers. Used after a user-submitted treatment so the chart updates
+    // without disturbing the polled glucose value or rescheduling the poll.
     function reloadChart() {
         if (Utils.isConfigDefault()) return;
+        fetchChartAndTreatments();
+    }
 
+    // Fetch 3 hours of entries + treatments. Shared between readData() and
+    // reloadChart() so the URL construction and parsing can never drift.
+    function fetchChartAndTreatments() {
         updateChartBounds();
 
-        var sinceDate = Date.now() - 3 * 60 * 60 * 1000;
-        Utils.sendJsonRequest(sanitizedNightscoutURL + "/api/v1/entries.json?find[date][$gte]=" + sinceDate + "&count=100&token=" + nightscoutToken, function (response) {
+        var sinceDate = Date.now() - Const.CHART_HISTORY_MS;
+        Api.request(Api.entriesUrl(sanitizedNightscoutURL, nightscoutToken, sinceDate, Const.CHART_ENTRY_COUNT), function (response) {
             try {
                 if (response.status == 200 && response.content) {
                     var j = response.content;
                     if (!Array.isArray(j)) return;
                     var valArray = [];
                     var labelArray = [];
+                    // Parallel array of timestamps in ms-since-epoch so the
+                    // treatment overlay can map a treatment time onto the
+                    // index-based x-axis used by Charts.LineChart.
+                    var tsArray = [];
                     var i = 0;
                     for (let entry of j.reverse()) {
                         var _glucose = Units.getUnitAwareValue(parseFloat(entry.sgv), units);
                         valArray.push(_glucose);
                         var date = new Date(entry.date);
-                        var paddedMinute = Utils.padTo2Digits(date.getMinutes());
-                        if (i++ % 6 == 0) {
-                            var paddedHour = Utils.padTo2Digits(date.getHours());
+                        tsArray.push(entry.date);
+                        var paddedMinute = Format.pad2(date.getMinutes());
+                        if (i++ % Const.LABEL_EVERY_N == 0) {
+                            var paddedHour = Format.pad2(date.getHours());
                             labelArray.push(paddedHour + ":" + paddedMinute);
                         } else {
                             labelArray.push("");
@@ -181,43 +225,53 @@ PlasmoidItem {
                     }
                     labelSources = labelArray;
                     valueSources = valArray;
+                    chartTimestamps = tsArray;
                     if (j.length > 0) {
                         chartTimeStart = j[0].date;
                         chartTimeEnd = j[j.length - 1].date;
                     }
-                    if (Math.max(...valArray) > usedChartMax) {
-                        usedChartMax = Math.max(...valArray);
+                    // Dynamically expand the chart bounds if data falls outside
+                    // the configured range; shrink back when bounds change again.
+                    if (valArray.length > 0) {
+                        var maxVal = Math.max.apply(null, valArray);
+                        var minVal = Math.min.apply(null, valArray);
+                        if (maxVal > usedChartMax) usedChartMax = maxVal;
+                        if (minVal < usedChartMin) usedChartMin = minVal;
                     }
-                    if (Math.min(...valArray) < usedChartMin) {
-                        usedChartMin = Math.min(...valArray);
-                    }
+                } else if (response.error) {
+                    console.warn("nightscout: entries fetch error:", response.error);
                 }
-            } catch(e) {}
+            } catch (e) {
+                console.warn("nightscout: entries parse error:", e.message);
+            }
         });
 
-        var sinceTime = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
-        Utils.sendJsonRequest(sanitizedNightscoutURL + "/api/v1/treatments.json?find[created_at][$gte]=" + sinceTime + "&token=" + nightscoutToken, function (response) {
+        var sinceTs = Date.now() - Const.CHART_HISTORY_MS;
+        Api.request(Api.treatmentsUrl(sanitizedNightscoutURL, nightscoutToken, sinceTs), function (response) {
             try {
                 if (response.status == 200 && response.content) {
                     if (Array.isArray(response.content)) {
                         treatments = response.content;
                     }
+                } else if (response.error) {
+                    console.warn("nightscout: treatments fetch error:", response.error);
                 }
-            } catch(e) {}
+            } catch (e) {
+                console.warn("nightscout: treatments parse error:", e.message);
+            }
         });
     }
 
-    // Read all data from NightScout using the provided configuration.
+    // Read all data from Nightscout using the provided configuration.
     function readData() {
-
         if (Utils.isConfigDefault()) {
             return;
         }
 
         updateChartBounds();
 
-        // get current glucose and trend
-        Utils.sendJsonRequest(sanitizedNightscoutURL + "/pebble/?token=" + nightscoutToken, function (response) {
+        // Get current glucose and trend.
+        Api.request(Api.pebbleUrl(sanitizedNightscoutURL, nightscoutToken), function (response) {
             try {
                 if (response.status == 200 && response.content) {
                     var j = response.content;
@@ -231,82 +285,44 @@ PlasmoidItem {
                     }
                     glucoseValue = Units.convertValue(sgv, apiUnit, units);
                     glucose = units === Units.Unit.MMOL_L ? glucoseValue.toFixed(1) : glucoseValue;
-                glucoseColor = Units.getGlucoseColor(glucoseValue, units);
-                isStale = false;
-                lastTimestamp = bgs.datetime;
-                updateTimeAgo();
+                    glucoseColor = Units.getGlucoseColor(glucoseValue, units);
+                    lastTimestamp = bgs.datetime;
+                    // Determine staleness immediately from the fetched reading
+                    // rather than waiting for the 1s timeAgoTimer. Otherwise a
+                    // stale reading would briefly show its green/yellow/red
+                    // color before the timer flipped isStale to true, and the
+                    // next second's timer recompute would still hold the same
+                    // value, so this recompute is consistent.
+                    isStale = Date.now() - lastTimestamp > Const.staleAfterMs(pollPadding);
+                    timeAgo = Format.timeAgo(lastTimestamp);
+                    status = "ok";
 
                     trend = Charsets.getTrendArrow(charset, bgs.trend);
                     scheduleNextPoll(false);
+                } else if (response.status === 0) {
+                    // Network failure or timeout: keep last value, surface an
+                    // "offline" status so the UI can show a useful message
+                    // rather than a meaningless "trend = 0".
+                    status = "offline";
+                    if (glucose === "???") {
+                        glucose = qsTr("offline");
+                        trend = "⚠";
+                    }
+                    scheduleNextPoll(true);
                 } else {
                     glucose = "ERR";
                     glucoseColor = "white";
-                    trend = response.status;
+                    trend = "⚠";
+                    status = "error";
                     scheduleNextPoll(true);
                 }
-            } catch(e) {
+            } catch (e) {
+                console.warn("nightscout: pebble parse error:", e.message);
                 scheduleNextPoll(true);
             }
         });
 
-        // get last 3 hours' data for the chart
-        var sinceDate = Date.now() - 3 * 60 * 60 * 1000;
-        Utils.sendJsonRequest(sanitizedNightscoutURL + "/api/v1/entries.json?find[date][$gte]=" + sinceDate + "&count=100&token=" + nightscoutToken, function (response) {
-            try {
-                if (response.status == 200 && response.content) {
-                    var j = response.content;
-
-                    if (!Array.isArray(j)) return;
-                    var valArray = [];
-                    var labelArray = [];
-
-                    var i = 0;
-
-                    for (let entry of j.reverse()) {
-                        var _glucose = Units.getUnitAwareValue(parseFloat(entry.sgv), units);
-                        valArray.push(_glucose);
-
-                        var date = new Date(entry.date);
-                        var paddedMinute = Utils.padTo2Digits(date.getMinutes());
-
-                        if (i++ % 6 == 0) {
-                            var paddedHour = Utils.padTo2Digits(date.getHours());
-                            labelArray.push(paddedHour + ":" + paddedMinute);
-                        } else {
-                            labelArray.push("");
-                        }
-                    }
-
-                    labelSources = labelArray;
-                    valueSources = valArray;
-
-                    if (j.length > 0) {
-                        chartTimeStart = j[0].date;
-                        chartTimeEnd = j[j.length - 1].date;
-                    }
-
-                    // dynamically scale the chart if we are out of bounds!
-                    if (Math.max(...valArray) > usedChartMax) {
-                        usedChartMax = Math.max(...valArray);
-                    }
-
-                    if (Math.min(...valArray) < usedChartMin) {
-                        usedChartMin = Math.min(...valArray);
-                    }
-                }
-            } catch(e) {}
-        });
-
-        // get treatments from the last 3 hours
-        var sinceTime = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
-        Utils.sendJsonRequest(sanitizedNightscoutURL + "/api/v1/treatments.json?find[created_at][$gte]=" + sinceTime + "&token=" + nightscoutToken, function (response) {
-            try {
-                if (response.status == 200 && response.content) {
-                    if (Array.isArray(response.content)) {
-                        treatments = response.content;
-                    }
-                }
-            } catch(e) {}
-        });
+        // Chart + treatments fetch (shared with reloadChart).
+        fetchChartAndTreatments();
     }
 }

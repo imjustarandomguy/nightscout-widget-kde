@@ -1,49 +1,14 @@
-function sendJsonRequest(url, callback) {
-    let request = new XMLHttpRequest();
+// Configuration helpers. HTTP has moved to lib/api.js.
 
-    request.onreadystatechange = function () {
-        if (request.readyState === XMLHttpRequest.DONE) {
-            var content = null;
-            try {
-                if (request.responseText) content = JSON.parse(request.responseText);
-            } catch(e) {}
-            callback({ status: request.status, content: content });
-        }
-    }
-
-    request.open("GET", url);
-    request.send();
-}
-
-function sendJsonPost(url, body, callback) {
-    let request = new XMLHttpRequest();
-
-    request.onreadystatechange = function () {
-        if (request.readyState === XMLHttpRequest.DONE) {
-            var content = null;
-            try {
-                if (request.responseText) content = JSON.parse(request.responseText);
-            } catch(e) {}
-            callback({ status: request.status, content: content });
-        }
-    }
-
-    request.open("POST", url);
-    request.setRequestHeader("Content-Type", "application/json");
-    request.send(JSON.stringify(body));
-}
-
-function padTo2Digits(num) {
-    return String(num).padStart(2, '0');
-}
-
+// Sentinel-default URL and token from the config dialog placeholders. A
+// freshly-installed widget with these values is considered "not configured yet".
 function isConfigDefault() {
     return nightscoutURL == "https://appname.herokuapp.com" || nightscoutToken == "plasmoid-0000000";
 }
 
+// Strip trailing occurrences of `charToTrim` from `s`. Used to normalize the
+// Nightscout URL so we can append paths without producing "//".
 function trimTrailingChars(s, charToTrim) {
-  var regExp = new RegExp(charToTrim + "+$");
-  var result = s.replace(regExp, "");
-
-  return result;
+    var regExp = new RegExp(charToTrim + "+$");
+    return s.replace(regExp, "");
 }
