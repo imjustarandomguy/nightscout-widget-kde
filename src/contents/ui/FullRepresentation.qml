@@ -655,12 +655,15 @@ ColumnLayout {
             function cycleType(direction) {
                 var types = Treatments.TYPES.map(function (t) { return t.key; });
                 var idx = types.indexOf(selectedType);
+                if (idx < 0) idx = 0;
                 idx = (idx + direction + types.length) % types.length;
                 selectedType = types[idx];
             }
 
             Component.onCompleted: {
-                selectedType = lastSelectedType;
+                var initial = lastSelectedType;
+                if (initial === "humalog") initial = "admelog";
+                selectedType = initial;
             }
 
             onSelectedTypeChanged: {
@@ -832,6 +835,9 @@ ColumnLayout {
                         if (timeInput.text.length >= 4 && timeInput.text.indexOf(":") > 0) {
                             var parts = timeInput.text.split(":");
                             dateObj.setHours(parseInt(parts[0], 10), parseInt(parts[1] || "0", 10), 0, 0);
+                            if (dateObj.getTime() > Date.now() + 60000) {
+                                dateObj.setDate(dateObj.getDate() - 1);
+                            }
                         }
 
                         var url = Api.postTreatmentUrl(sanitizedNightscoutURL, nightscoutToken);

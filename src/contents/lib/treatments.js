@@ -1,37 +1,27 @@
 // Single source of truth for treatment types, colors, and payload building.
-// Eliminates the duplicate hard-coded arrays and color maps that previously
-// lived separately in FullRepresentation.qml.
+// Matches the JugglucoNG Nightscout treatment format so the desktop widget
+// and mobile app work together seamlessly.
 
 // ---- Helpers -----------------------------------------------------------
 
-function pad2(n) { return n < 10 ? "0" + n : "" + n; }
+// Attribution values recorded for uploaded treatments.
+var ENTERED_BY = "kde-widget";
+var APP = "kde-widget";
+var ID_PREFIX = "kde-w-";
 
-function pad3(n) { return n < 10 ? "00" + n : n < 100 ? "0" + n : "" + n; }
-
-// Generate a v4 UUID (no external dependency needed).
-function uuidv4() {
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
-        var r = Math.random() * 16 | 0;
-        return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
-    });
+// Generate a treatment identifier:
+// "kde-w-<hex random 3 chars>-<epoch ms hex>".
+function generateTreatmentId(dateObj) {
+    var ts = dateObj.getTime();
+    var hexRand = ("000" + Math.floor(Math.random() * 0x1000).toString(16)).slice(-3);
+    return ID_PREFIX + hexRand + "-" + ts.toString(16);
 }
 
-// Format a Date as the xDrip sysTime string, e.g.
-// "2026-07-09T12:31:02.666-0400" or "...+0530".
-function formatSysTime(d) {
-    var y = d.getFullYear();
-    var mo = pad2(d.getMonth() + 1);
-    var day = pad2(d.getDate());
-    var h = pad2(d.getHours());
-    var mi = pad2(d.getMinutes());
-    var s = pad2(d.getSeconds());
-    var ms = pad3(d.getMilliseconds());
-    var off = -d.getTimezoneOffset();
-    var oh = Math.abs(Math.floor(off / 60));
-    var om = Math.abs(off % 60);
-    var sign = off >= 0 ? "+" : "-";
-    return y + "-" + mo + "-" + day + "T" + h + ":" + mi + ":" + s + "." + ms
-        + sign + pad2(oh) + pad2(om);
+// Default carb absorption duration in minutes from JugglucoNG formula:
+// 60 + 2 * carbs + 1.5 * protein + 2.5 * fat, clamped to [30, 360].
+function defaultAbsorptionMinutes(carbs) {
+    var c = parseFloat(carbs) || 0;
+    return Math.min(360, Math.max(30, Math.round(60 + 2 * c)));
 }
 
 // ---- Type descriptors --------------------------------------------------
@@ -44,80 +34,105 @@ var TYPES = [
         accent: "#f97316"
     },
     {
-        key: "humalog",
-        label: "Humalog",
+        key: "admelog",
+        label: "Admelog",
         accent: "#ec4899",
-        insulin: "Humalog"
+        insulin: "Admelog",
+        isBasal: false,
+        notes: "Rapid-Acting",
+        onsetMinutes: 21,
+        durationMinutes: 330
     },
     {
         key: "tresiba",
         label: "Tresiba",
         accent: "#3b82f6",
-        insulin: "tresiba"
+        insulin: "Tresiba",
+        isBasal: true,
+        notes: "Long-Acting",
+        onsetMinutes: 0,
+        durationMinutes: 2520
     }
 ];
 
-// Look up a type descriptor by key. Returns the carbs descriptor on miss so
-// the UI always has something sensible to fall back to.
+// Look up a type descriptor by key. Maps legacy "humalog" key to "admelog".
+// Returns the carbs descriptor on miss so the UI always has something sensible.
 function typeByKey(key) {
+    if (key === "humalog") key = "admelog";
     for (var i = 0; i < TYPES.length; i++) {
         if (TYPES[i].key === key) return TYPES[i];
     }
     return TYPES[0];
 }
 
-// Attribution value recorded for every uploaded treatment. This is the
-// client identity xDrip peers see in `enteredBy`.
-var ENTERED_BY = "kde-widget";
-
-// Build the POST body for a new treatment in xDrip-compatible format.
+// Build the POST body for a new treatment in JugglucoNG-compatible format.
 // `dateObj` is a JavaScript Date object set to the desired treatment time.
 function buildPayload(typeKey, value, dateObj) {
     var t = typeByKey(typeKey);
     var isCarbs = t.key === "carbs";
     var ts = dateObj.getTime();
-    // created_at truncates milliseconds to match xDrip convention.
-    var wholeSec = new Date(dateObj);
-    wholeSec.setMilliseconds(0);
+    var id = generateTreatmentId(dateObj);
+    var isoTime = dateObj.toISOString();
 
-    // Emit fields in the same order xDrip uploads them: the active type
-    // field (carbs or insulin) sits right after uuid, and the inactive
-    // field (null) is appended last.
     var payload = {
-        timestamp: ts,
-        eventType: "<none>",
+        _id: id,
+        date: ts,
+        created_at: isoTime,
+        utcOffset: 0,
+        isValid: true,
+        app: APP,
         enteredBy: ENTERED_BY,
-        uuid: uuidv4()
+        type: isCarbs ? "carbs" : "insulin",
+        journalTitle: isCarbs ? "Food" : t.insulin,
+        journalSource: "manual",
+        updated_at: new Date().toISOString()
     };
+
     if (isCarbs) {
+        var absMin = defaultAbsorptionMinutes(value);
+        var durMs = absMin * 60000;
+        payload.eventType = value < 12 ? "Carb Correction" : "Meal Bolus";
         payload.carbs = value;
-    } else {
-        payload.insulin = value;
-    }
-    payload.insulinInjections = isCarbs
-        ? "[]"
-        : JSON.stringify([{ insulin: t.insulin, units: value }]);
-    payload.created_at = wholeSec.toISOString();
-    payload.sysTime = formatSysTime(dateObj);
-    payload.utcOffset = 0;
-    if (isCarbs) {
+        payload.food = "Food";
+        payload.duration = durMs;
+        payload.durationInMilliseconds = durMs;
+        payload.absorptionTime = absMin;
+        payload.identifier = id;
         payload.insulin = null;
     } else {
+        payload.eventType = "Correction Bolus";
+        payload.insulin = value;
+        payload.isBasalInsulin = !!t.isBasal;
+        payload.insulinType = t.insulin;
+        payload.notes = t.notes;
+        payload.insulinOnsetMinutes = t.onsetMinutes;
+        payload.insulinDurationMinutes = t.durationMinutes;
+        payload.identifier = id;
         payload.carbs = null;
     }
+
     return payload;
 }
 
-// Decide on a display color for an existing treatment record. Order matters:
-// mixed carbs+insulin gets purple; carbs-only orange; Humalog pink; other
-// insulin blue. Handles both xDrip's JSON-string insulinInjections and the
-// inline-array form.
-function colorFor(t) {
-    if (t.carbs) {
-        if (t.insulin) return "#8e44ad";
-        return "#f97316";
+// Helper to decide if an insulin record represents rapid-acting insulin.
+// Recognizes JugglucoNG (isBasalInsulin: false, notes "Rapid-Acting", insulinType "Admelog"),
+// legacy Humalog records (insulinInjections with Humalog), and common rapid insulin names.
+function isRapidInsulin(t) {
+    if (t.isBasalInsulin === true) return false;
+    if (t.isBasalInsulin === false) return true;
+
+    // Check insulinType and journalTitle
+    var typeStr = (t.insulinType || t.journalTitle || "").toLowerCase();
+    if (/admelog|humalog|lispro|novolog|novorapid|aspart|fiasp|lyumjev|apidra|glulisine|afrezza/.test(typeStr)) {
+        return true;
     }
-    // Normalize insulinInjections: parse JSON string if needed.
+
+    // Check notes
+    if (t.notes && /rapid/i.test(t.notes)) {
+        return true;
+    }
+
+    // Check legacy insulinInjections
     var injections = t.insulinInjections;
     if (typeof injections === "string") {
         try {
@@ -126,12 +141,30 @@ function colorFor(t) {
             injections = null;
         }
     }
-    if (Array.isArray(injections) && injections.length > 0) {
-        if (injections[0].insulin === "Humalog") {
-            return "#ec4899";
+    if (Array.isArray(injections) && injections.length > 0 && injections[0] && injections[0].insulin) {
+        var injName = String(injections[0].insulin).toLowerCase();
+        if (/admelog|humalog|lispro|novolog|novorapid|aspart|fiasp|lyumjev|apidra|glulisine|afrezza/.test(injName)) {
+            return true;
         }
     }
-    if (t.insulin) return "#3b82f6";
+
+    return false;
+}
+
+// Decide on a display color for an existing treatment record. Order matters:
+// mixed carbs+insulin gets purple; carbs-only orange; rapid-acting insulin pink;
+// other insulin (e.g. Tresiba / basal) blue; fallback neutral gray.
+function colorFor(t) {
+    if (t.carbs) {
+        if (t.insulin) return "#8e44ad";
+        return "#f97316";
+    }
+    if (isRapidInsulin(t)) {
+        return "#ec4899";
+    }
+    if (t.insulin) {
+        return "#3b82f6";
+    }
     return "#95a5a6";
 }
 
@@ -139,13 +172,19 @@ function colorFor(t) {
 function labelFor(t) {
     var parts = [];
     if (t.carbs) parts.push(Math.round(t.carbs) + "g");
-    if (t.insulin) parts.push(parseFloat(t.insulin).toFixed(1) + "u");
+    if (t.insulin) {
+        var num = parseFloat(t.insulin);
+        if (!isNaN(num)) {
+            var rounded = Math.round(num * 10) / 10;
+            parts.push(rounded.toFixed(1) + "u");
+        }
+    }
     if (parts.length === 0 && t.notes) parts.push(t.notes);
     return parts.join(" ");
 }
 
 // Extract a ms-since-epoch timestamp from a treatment record, tolerating the
-// `timestamp` field (number, xDrip), `date` (number), and `created_at` (ISO).
+// `timestamp` field (number, xDrip), `date` (number, JugglucoNG), and `created_at` (ISO).
 function timestampFor(t) {
     if (t.timestamp) return t.timestamp;
     if (t.date) return t.date;

@@ -6,82 +6,153 @@ import "../treatments.js" as Treatments
 TestCase {
     name: "Treatments"
 
-    // buildPayload must produce an xDrip-compatible payload.
-    function test_buildPayload_carbs() {
+    // buildPayload must produce a JugglucoNG-compatible payload.
+    function test_buildPayload_carbs_mealBolus() {
         var d = new Date("2024-01-01T12:00:00Z");
         var payload = Treatments.buildPayload("carbs", 25, d);
-        compare(payload.eventType, "<none>");
+        compare(payload.eventType, "Meal Bolus");
         compare(payload.enteredBy, "kde-widget");
-        verify(typeof payload.uuid === "string", "uuid must be present");
-        compare(payload.timestamp, d.getTime());
+        compare(payload.app, "kde-widget");
+        compare(payload.type, "carbs");
+        compare(payload.journalTitle, "Food");
+        compare(payload.journalSource, "manual");
+        verify(payload._id.startsWith("kde-w-"), "_id must start with kde-w-");
+        compare(payload.identifier, payload._id);
+        compare(payload.date, d.getTime());
         compare(payload.created_at, "2024-01-01T12:00:00.000Z");
         compare(payload.utcOffset, 0);
+        compare(payload.isValid, true);
         compare(payload.carbs, 25);
+        compare(payload.food, "Food");
+        // defaultAbsorptionMinutes: 60 + 2 * 25 = 110 min
+        compare(payload.absorptionTime, 110);
+        compare(payload.duration, 110 * 60000);
+        compare(payload.durationInMilliseconds, 110 * 60000);
         compare(payload.insulin, null);
-        compare(payload.insulinInjections, "[]");
     }
 
-    function test_buildPayload_humalog() {
+    function test_buildPayload_carbs_carbCorrection() {
         var d = new Date("2024-01-01T12:00:00Z");
-        var payload = Treatments.buildPayload("humalog", 2.1, d);
-        compare(payload.eventType, "<none>");
+        var payload = Treatments.buildPayload("carbs", 2, d);
+        // Under 12g is a Carb Correction
+        compare(payload.eventType, "Carb Correction");
+        compare(payload.carbs, 2);
+        // defaultAbsorptionMinutes: 60 + 2 * 2 = 64 min
+        compare(payload.absorptionTime, 64);
+        compare(payload.duration, 64 * 60000);
+        compare(payload.durationInMilliseconds, 64 * 60000);
+    }
+
+    function test_buildPayload_admelog() {
+        var d = new Date("2024-01-01T12:00:00Z");
+        var payload = Treatments.buildPayload("admelog", 10, d);
+        compare(payload.eventType, "Correction Bolus");
         compare(payload.enteredBy, "kde-widget");
-        verify(typeof payload.uuid === "string", "uuid must be present");
-        compare(payload.timestamp, d.getTime());
+        compare(payload.app, "kde-widget");
+        compare(payload.type, "insulin");
+        compare(payload.journalTitle, "Admelog");
+        compare(payload.journalSource, "manual");
+        verify(payload._id.startsWith("kde-w-"), "_id must start with kde-w-");
+        compare(payload.identifier, payload._id);
+        compare(payload.date, d.getTime());
+        compare(payload.created_at, "2024-01-01T12:00:00.000Z");
+        compare(payload.utcOffset, 0);
+        compare(payload.isValid, true);
         compare(payload.carbs, null);
-        compare(payload.insulin, 2.1);
-        var injections = JSON.parse(payload.insulinInjections);
-        compare(injections[0].insulin, "Humalog");
-        compare(injections[0].units, 2.1);
+        compare(payload.insulin, 10);
+        compare(payload.isBasalInsulin, false);
+        compare(payload.insulinType, "Admelog");
+        compare(payload.notes, "Rapid-Acting");
+        compare(payload.insulinOnsetMinutes, 21);
+        compare(payload.insulinDurationMinutes, 330);
     }
 
     function test_buildPayload_tresiba() {
         var d = new Date("2024-01-01T12:00:00Z");
-        var payload = Treatments.buildPayload("tresiba", 8, d);
-        compare(payload.insulin, 8);
-        var injections = JSON.parse(payload.insulinInjections);
-        compare(injections[0].insulin, "tresiba");
-        compare(injections[0].units, 8);
+        var payload = Treatments.buildPayload("tresiba", 25, d);
+        compare(payload.eventType, "Correction Bolus");
+        compare(payload.enteredBy, "kde-widget");
+        compare(payload.app, "kde-widget");
+        compare(payload.type, "insulin");
+        compare(payload.journalTitle, "Tresiba");
+        compare(payload.journalSource, "manual");
+        verify(payload._id.startsWith("kde-w-"), "_id must start with kde-w-");
+        compare(payload.identifier, payload._id);
+        compare(payload.date, d.getTime());
+        compare(payload.created_at, "2024-01-01T12:00:00.000Z");
+        compare(payload.utcOffset, 0);
+        compare(payload.isValid, true);
+        compare(payload.carbs, null);
+        compare(payload.insulin, 25);
+        compare(payload.isBasalInsulin, true);
+        compare(payload.insulinType, "Tresiba");
+        compare(payload.notes, "Long-Acting");
+        compare(payload.insulinOnsetMinutes, 0);
+        compare(payload.insulinDurationMinutes, 2520);
+    }
+
+    function test_buildPayload_humalog_mappedToAdmelog() {
+        // Legacy "humalog" key should map to Admelog
+        var d = new Date("2024-01-01T12:00:00Z");
+        var payload = Treatments.buildPayload("humalog", 5, d);
+        compare(payload.journalTitle, "Admelog");
+        compare(payload.insulinType, "Admelog");
+        compare(payload.isBasalInsulin, false);
     }
 
     function test_buildPayload_unknownType_fallsBackToCarbs() {
         // Unknown type keys should fall back to the first descriptor (carbs)
-        // so the UI never builds a payload it cannot parse on the server side.
         var d = new Date("2024-01-01T12:00:00Z");
         var payload = Treatments.buildPayload("nonexistent", 99, d);
-        compare(payload.eventType, "<none>");
+        compare(payload.type, "carbs");
         compare(payload.carbs, 99);
     }
 
-    // colorFor: the priority order is insulinInjections(Humalog) >
-    // carbs+insulin > carbs-only > insulin > fallback. The Humalog
-    // insulinInjections check runs first so a Humalog record never gets
-    // shadowed by the generic "insulin -> blue" branch.
+    // colorFor tests
     function test_colorFor_carbsOnly_isOrange() {
         compare(Treatments.colorFor({ carbs: 25 }), "#f97316");
     }
 
-    function test_colorFor_carbsAndNonHumalogInsulin_isPurple() {
+    function test_colorFor_carbsAndInsulin_isPurple() {
         compare(Treatments.colorFor({ carbs: 25, insulin: 2 }), "#8e44ad");
     }
 
-    function test_colorFor_insulinOnly_isBlue() {
-        compare(Treatments.colorFor({ insulin: 2 }), "#3b82f6");
+    function test_colorFor_jugglucoAdmelog_isPink() {
+        // Real JugglucoNG Admelog treatment format
+        var t = {
+            type: "insulin",
+            journalTitle: "Admelog",
+            eventType: "Correction Bolus",
+            insulin: 10,
+            isBasalInsulin: false,
+            insulinType: "Admelog",
+            notes: "Rapid-Acting",
+            carbs: null
+        };
+        compare(Treatments.colorFor(t), "#ec4899");
     }
 
-    function test_colorFor_insulinInjectionsHumalog_isPink() {
+    function test_colorFor_jugglucoTresiba_isBlue() {
+        // Real JugglucoNG Tresiba treatment format
+        var t = {
+            type: "insulin",
+            journalTitle: "Tresiba",
+            eventType: "Correction Bolus",
+            insulin: 25,
+            isBasalInsulin: true,
+            insulinType: "Tresiba",
+            notes: "Long-Acting",
+            carbs: null
+        };
+        compare(Treatments.colorFor(t), "#3b82f6");
+    }
+
+    function test_colorFor_legacyHumalogInjections_isPink() {
         var t = { insulinInjections: JSON.stringify([{ insulin: "Humalog", units: 1 }]) };
         compare(Treatments.colorFor(t), "#ec4899");
     }
 
     function test_colorFor_humalogWithBothFields_isPink() {
-        // Bug repro: a Humalog record that the Nightscout API returns with
-        // both `insulin` set and the JSON `insulinInjections` array.
-        // Previously the function checked `insulinInjections` after `carbs`
-        // and `insulin`, so if the JSON branch fell through (here it
-        // succeeds, but the logic placed it before the carbohydrate rule),
-        // pink could be masked by the generic "insulin -> blue" branch.
-        // Pink must win.
         var t = {
             insulin: 2,
             insulinInjections: JSON.stringify([{ insulin: "Humalog", units: 2 }])
@@ -89,14 +160,7 @@ TestCase {
         compare(Treatments.colorFor(t), "#ec4899");
     }
 
-    function test_colorFor_humalogWithEmptyInjectionsArray_isPink() {
-        // Defensive: if the API returns an `insulinInjections` field but
-        // the array is empty, the JSON parses cleanly but produces no
-        // Humalog indicator. In the buggy ordering, that fell through to
-        // the generic "insulin -> blue" branch even when `insulin`
-        // equals "Humalog" elsewhere. The new ordering still falls
-        // through here, but the empty-array record is unusual in
-        // practice; document the behavior with this test.
+    function test_colorFor_humalogWithEmptyInjectionsArray_isBlue() {
         var t = {
             insulin: 2,
             insulinInjections: JSON.stringify([])
@@ -104,18 +168,18 @@ TestCase {
         compare(Treatments.colorFor(t), "#3b82f6");
     }
 
-    function test_colorFor_insulinInjectionsOther_isBlue() {
-        // xDrip always sets both `insulin` and `insulinInjections` for insulin
-        // treatments, even for non-Humalog types.
+    function test_colorFor_legacyTresibaInjections_isBlue() {
         var t = { insulin: 8, insulinInjections: JSON.stringify([{ insulin: "tresiba", units: 8 }]) };
         compare(Treatments.colorFor(t), "#3b82f6");
     }
 
     function test_colorFor_insulinInjectionsBroken_isBlue() {
-        // Invalid JSON in insulinInjections should not throw; it should fall
-        // through to the generic insulin/blue path.
         var t = { insulinInjections: "not-json", insulin: 1 };
         compare(Treatments.colorFor(t), "#3b82f6");
+    }
+
+    function test_colorFor_insulinOnly_isBlue() {
+        compare(Treatments.colorFor({ insulin: 2 }), "#3b82f6");
     }
 
     function test_colorFor_empty_isFallback() {
@@ -123,18 +187,21 @@ TestCase {
     }
 
     function test_colorFor_cachedRecord_isBlue() {
-        // An empty-string `insulinInjections` (a length-0 truthy string)
-        // fails JSON.parse and falls through to the generic blue.
         var t = { insulinInjections: "", insulin: 5 };
         compare(Treatments.colorFor(t), "#3b82f6");
     }
 
+    // labelFor tests
     function test_labelFor_carbsAndInsulin() {
         compare(Treatments.labelFor({ carbs: 25, insulin: 2.05 }), "25g 2.1u");
     }
 
     function test_labelFor_carbsOnly() {
         compare(Treatments.labelFor({ carbs: 25 }), "25g");
+    }
+
+    function test_labelFor_insulinOnly() {
+        compare(Treatments.labelFor({ insulin: 10 }), "10.0u");
     }
 
     function test_labelFor_notesWhenNoCarbsNoInsulin() {
@@ -145,13 +212,14 @@ TestCase {
         compare(Treatments.labelFor({}), "");
     }
 
+    // timestampFor tests
     function test_timestampFor_timestamp_numeric() {
-        // xDrip's primary timestamp field takes priority.
         compare(Treatments.timestampFor({ timestamp: 1783571834999 }), 1783571834999);
     }
 
     function test_timestampFor_date_numeric() {
-        compare(Treatments.timestampFor({ date: 1700000000000 }), 1700000000000);
+        // JugglucoNG standard epoch ms field
+        compare(Treatments.timestampFor({ date: 1791420259735 }), 1791420259735);
     }
 
     function test_timestampFor_created_at_iso() {
@@ -159,7 +227,6 @@ TestCase {
     }
 
     function test_timestampFor_timestampBeatsDate() {
-        // timestamp should be checked before date.
         compare(Treatments.timestampFor({ timestamp: 1, date: 2 }), 1);
     }
 
@@ -167,10 +234,15 @@ TestCase {
         compare(Treatments.timestampFor({}), 0);
     }
 
+    // typeByKey tests
     function test_typeByKey_known() {
         compare(Treatments.typeByKey("carbs").key,   "carbs");
-        compare(Treatments.typeByKey("humalog").key, "humalog");
+        compare(Treatments.typeByKey("admelog").key, "admelog");
         compare(Treatments.typeByKey("tresiba").key, "tresiba");
+    }
+
+    function test_typeByKey_humalogMapsToAdmelog() {
+        compare(Treatments.typeByKey("humalog").key, "admelog");
     }
 
     function test_typeByKey_unknown_fallsBackToCarbs() {
@@ -179,6 +251,9 @@ TestCase {
 
     function test_TYPES_shape() {
         compare(Treatments.TYPES.length, 3);
+        compare(Treatments.TYPES[0].key, "carbs");
+        compare(Treatments.TYPES[1].key, "admelog");
+        compare(Treatments.TYPES[2].key, "tresiba");
         for (var i = 0; i < Treatments.TYPES.length; i++) {
             var t = Treatments.TYPES[i];
             verify(t.key,   "missing key");
