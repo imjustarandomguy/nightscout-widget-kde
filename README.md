@@ -38,14 +38,32 @@ Use the KDE widget configuration to configure:
 
 ## Development & Testing
 
-### Install or update the widget locally
+### Option A: Direct Symlink (Recommended for development)
+Symlinking the source directory directly into KDE's plasmoid directory allows Plasma to read your working files live so changes take effect immediately upon restarting plasmashell:
+
 ```bash
-kpackagetool6 -t Plasma/Applet -u src/
+mkdir -p ~/.local/share/plasma/plasmoids
+ln -sfn "$PWD/src" ~/.local/share/plasma/plasmoids/org.kde.plasma.nightscoutwidget
+systemctl --user restart plasma-plasmashell
 ```
 
-### Restart Plasma Shell (KDE Plasma 6)
+### Option B: Install or update via `kpackagetool6`
+Run from the repository root (use `-u` to upgrade an existing installation or `-i` for first-time install):
+
+```bash
+cd ~/src/nightscout-widget-kde
+kpackagetool6 -t Plasma/Applet -u src/ || kpackagetool6 -t Plasma/Applet -i src/
+systemctl --user restart plasma-plasmashell
+```
+
+### Restart Plasma Shell & Clear Cache
 In KDE Plasma 6 under systemd, restart plasmashell with:
 ```bash
+systemctl --user restart plasma-plasmashell
+```
+If Plasma caches old QML files across restarts, clear the QML cache first:
+```bash
+rm -rf ~/.cache/qmlcache
 systemctl --user restart plasma-plasmashell
 ```
 

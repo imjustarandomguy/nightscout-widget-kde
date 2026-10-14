@@ -13,9 +13,9 @@ KCMUtils.SimpleKCM {
     property string cfg_nightscoutTokenDefault: "plasmoid-0000000"
     property int cfg_charsetDefault: 0
     property int cfg_pollPaddingDefault: 15
-    property int cfg_unitsDefault: 0
-    property int cfg_chartMinDefault: 50
-    property int cfg_chartMaxDefault: 300
+    property int cfg_unitsDefault: 1
+    property int cfg_chartMinDefault: 0
+    property int cfg_chartMaxDefault: 15
 
     property alias cfg_nightscoutURL: nightscoutURL.text
     property alias cfg_nightscoutToken: nightscoutToken.text
@@ -39,9 +39,9 @@ KCMUtils.SimpleKCM {
             id: charset
             Kirigami.FormData.label: i18n("Charset")
             model: [
-                i18n(Charsets.getCharsetText(Charsets.Charset.UNICODE_1)),
-                i18n(Charsets.getCharsetText(Charsets.Charset.UNICODE_2)),
-                i18n(Charsets.getCharsetText(Charsets.Charset.EMOJI))
+                Charsets.getCharsetText(Charsets.Charset.UNICODE_1),
+                Charsets.getCharsetText(Charsets.Charset.UNICODE_2),
+                Charsets.getCharsetText(Charsets.Charset.EMOJI)
             ]
         }
         QQC2.SpinBox {
@@ -54,17 +54,19 @@ KCMUtils.SimpleKCM {
             id: units
             Kirigami.FormData.label: i18n("Units")
             model: [
-                i18n(Units.getUnitText(Units.Unit.MG_DL)),
-                i18n(Units.getUnitText(Units.Unit.MMOL_L))
+                Units.getUnitText(Units.Unit.MG_DL),
+                Units.getUnitText(Units.Unit.MMOL_L)
             ]
         }
         QQC2.TextField {
             id: chartMin
             Kirigami.FormData.label: i18n("Chart Minimum")
+            validator: DoubleValidator { bottom: 0; notation: DoubleValidator.StandardNotation; locale: "C" }
         }
         QQC2.TextField {
             id: chartMax
             Kirigami.FormData.label: i18n("Chart Maximum")
+            validator: DoubleValidator { bottom: 0; notation: DoubleValidator.StandardNotation; locale: "C" }
         }
     }
 }

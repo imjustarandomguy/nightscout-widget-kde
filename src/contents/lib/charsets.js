@@ -4,18 +4,20 @@ const Charset = {
     EMOJI: 2
 }
 
-// var DIRECTIONS = {
-// NONE: 0
-// , DoubleUp: 1
-// , SingleUp: 2
-// , FortyFiveUp: 3
-// , Flat: 4
-// , FortyFiveDown: 5
-// , SingleDown: 6
-// , DoubleDown: 7
-// , 'NOT COMPUTABLE': 8
-// , 'RATE OUT OF RANGE': 9
-// };
+// Map string direction names (Nightscout API direction strings) to numeric indices.
+const DIRECTION_MAP = {
+    "NONE": 0,
+    "DoubleUp": 1,
+    "SingleUp": 2,
+    "FortyFiveUp": 3,
+    "Flat": 4,
+    "FortyFiveDown": 5,
+    "SingleDown": 6,
+    "DoubleDown": 7,
+    "NOT COMPUTABLE": 8,
+    "RATE OUT OF RANGE": 9
+};
+
 const trendArrows = {
     0: ["", "⇈", "↑", "↗", "→", "↘", "↓", "⇊", "?", "↹"],
     1: ["", "⬆⬆", "⬆", "⬈", "➡", "⬊", "⬇", "⬇⬇", "?", "⬌"],
@@ -23,7 +25,15 @@ const trendArrows = {
 }
 
 function getTrendArrow(charset, trend) {
-    return trendArrows[charset][trend];
+    var set = trendArrows[charset] || trendArrows[Charset.UNICODE_1];
+    var idx = trend;
+    if (typeof trend === "string" && DIRECTION_MAP.hasOwnProperty(trend)) {
+        idx = DIRECTION_MAP[trend];
+    }
+    if (typeof idx === "number" && idx >= 0 && idx < set.length) {
+        return set[idx];
+    }
+    return "?";
 }
 
 function getCharsetText(charset) {
@@ -34,4 +44,5 @@ function getCharsetText(charset) {
     } else if (charset == Charset.EMOJI) {
         return "Emoji (" + trendArrows[Charset.EMOJI][3] + ")";
     }
+    return "Unicode 1 (" + trendArrows[Charset.UNICODE_1][3] + ")";
 }

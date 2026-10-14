@@ -1,10 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import org.kde.plasma.core
-import org.kde.plasma.components
 import org.kde.plasma.plasmoid
-import org.kde.kirigami as Kirigami
 
 import "../lib/api.js" as Api
 import "../lib/charsets.js" as Charsets
@@ -17,6 +14,22 @@ PlasmoidItem {
     id: root
 
     Plasmoid.configurationRequired: true
+
+    toolTipMainText: (glucose !== "???" ? glucose + " " + Units.getUnitText(units) + (trend ? " " + trend : "") + (glucoseDelta ? " (" + glucoseDelta + ")" : "") : qsTr("Nightscout Widget"))
+    toolTipSubText: {
+        let parts = [];
+        if (lastTimestamp > 0) {
+            parts.push(isStale ? qsTr("Stale (%1)").arg(timeAgo) : timeAgo);
+        }
+        if (status === "ok") {
+            parts.push(Units.isInGreenRange(glucoseValue, units) ? qsTr("In Target Range") : qsTr("Out of Target Range"));
+        } else if (status === "offline") {
+            parts.push(qsTr("Offline — retrying"));
+        } else if (status === "error") {
+            parts.push(qsTr("Error connecting to Nightscout"));
+        }
+        return parts.join(" · ");
+    }
 
     property string nightscoutURL: Plasmoid.configuration.nightscoutURL
     property string nightscoutToken: Plasmoid.configuration.nightscoutToken
@@ -35,6 +48,7 @@ PlasmoidItem {
     property real glucoseValue: 0
     property color glucoseColor: "white"
     property string trend: "???"
+    property string glucoseDelta: ""
     property var lastTimestamp: 0
     property string timeAgo: ""
 
@@ -61,7 +75,7 @@ PlasmoidItem {
 
     // Check if the configuration was adapted completely and try to fetch data.
     function configChanged() {
-        if (!Utils.isConfigDefault()) {
+        if (!Utils.isConfigDefault(sanitizedNightscoutURL, nightscoutToken)) {
             Plasmoid.configurationRequired = false;
             deferTimer.restart();
         }
@@ -147,8 +161,8 @@ PlasmoidItem {
             return;
         }
         if (lastTimestamp > 0) {
-            var next = lastTimestamp + Const.POLL_PERIOD_MS + pollPadding * 1000;
-            var delay = Math.max(Const.MIN_POLL_DELAY_MS, next - Date.now());
+            let next = lastTimestamp + Const.POLL_PERIOD_MS + pollPadding * 1000;
+            let delay = Math.max(Const.MIN_POLL_DELAY_MS, next - Date.now());
             pollDelay = delay;
             pollStartTime = Date.now();
             pollProgress = 0;
@@ -167,7 +181,7 @@ PlasmoidItem {
 
     Timer {
         id: pollProgressTimer
-        interval: 200
+        interval: 1000
         repeat: true
         running: textTimer.running
         onTriggered: {
@@ -188,7 +202,7 @@ PlasmoidItem {
     // timers. Used after a user-submitted treatment so the chart updates
     // without disturbing the polled glucose value or rescheduling the poll.
     function reloadChart() {
-        if (Utils.isConfigDefault()) return;
+        if (Utils.isConfigDefault(sanitizedNightscoutURL, nightscoutToken)) return;
         fetchChartAndTreatments();
     }
 
@@ -201,23 +215,23 @@ PlasmoidItem {
         Api.request(Api.entriesUrl(sanitizedNightscoutURL, nightscoutToken, sinceDate, Const.CHART_ENTRY_COUNT), function (response) {
             try {
                 if (response.status == 200 && response.content) {
-                    var j = response.content;
+                    let j = response.content;
                     if (!Array.isArray(j)) return;
-                    var valArray = [];
-                    var labelArray = [];
+                    let valArray = [];
+                    let labelArray = [];
                     // Parallel array of timestamps in ms-since-epoch so the
                     // treatment overlay can map a treatment time onto the
                     // index-based x-axis used by Charts.LineChart.
-                    var tsArray = [];
-                    var i = 0;
+                    let tsArray = [];
+                    let i = 0;
                     for (let entry of j.reverse()) {
-                        var _glucose = Units.getUnitAwareValue(parseFloat(entry.sgv), units);
+                        let _glucose = Units.getUnitAwareValue(parseFloat(entry.sgv), units);
                         valArray.push(_glucose);
-                        var date = new Date(entry.date);
+                        let date = new Date(entry.date);
                         tsArray.push(entry.date);
-                        var paddedMinute = Format.pad2(date.getMinutes());
+                        let paddedMinute = Format.pad2(date.getMinutes());
                         if (i++ % Const.LABEL_EVERY_N == 0) {
-                            var paddedHour = Format.pad2(date.getHours());
+                            let paddedHour = Format.pad2(date.getHours());
                             labelArray.push(paddedHour + ":" + paddedMinute);
                         } else {
                             labelArray.push("");
@@ -230,13 +244,33 @@ PlasmoidItem {
                         chartTimeStart = j[0].date;
                         chartTimeEnd = j[j.length - 1].date;
                     }
+                    if (valArray.length >= 2) {
+                        let curr = valArray[valArray.length - 1];
+                        let prev = valArray[valArray.length - 2];
+                        if (typeof curr === "number" && typeof prev === "number" && !isNaN(curr) && !isNaN(prev)) {
+                            let diff = curr - prev;
+                            if (units === Units.Unit.MMOL_L) {
+                                let diffFmt = diff.toFixed(1);
+                                glucoseDelta = (diff > 0 ? "+" : "") + diffFmt;
+                            } else {
+                                let diffRound = Math.round(diff);
+                                glucoseDelta = (diffRound > 0 ? "+" : "") + diffRound;
+                            }
+                        }
+                    }
                     // Dynamically expand the chart bounds if data falls outside
                     // the configured range; shrink back when bounds change again.
                     if (valArray.length > 0) {
-                        var maxVal = Math.max.apply(null, valArray);
-                        var minVal = Math.min.apply(null, valArray);
-                        if (maxVal > usedChartMax) usedChartMax = maxVal;
-                        if (minVal < usedChartMin) usedChartMin = minVal;
+                        let validVals = valArray.filter(v => typeof v === "number" && !isNaN(v));
+                        if (validVals.length > 0) {
+                            let maxVal = Math.max.apply(null, validVals);
+                            let minVal = Math.min.apply(null, validVals);
+                            if (maxVal > usedChartMax) usedChartMax = maxVal;
+                            if (minVal < usedChartMin) usedChartMin = minVal;
+                        }
+                    }
+                    if (usedChartMax <= usedChartMin) {
+                        usedChartMax = usedChartMin + (units === Units.Unit.MMOL_L ? 5 : 50);
                     }
                 } else if (response.error) {
                     console.warn("nightscout: entries fetch error:", response.error);
@@ -264,7 +298,7 @@ PlasmoidItem {
 
     // Read all data from Nightscout using the provided configuration.
     function readData() {
-        if (Utils.isConfigDefault()) {
+        if (Utils.isConfigDefault(sanitizedNightscoutURL, nightscoutToken)) {
             return;
         }
 
@@ -274,19 +308,35 @@ PlasmoidItem {
         Api.request(Api.pebbleUrl(sanitizedNightscoutURL, nightscoutToken), function (response) {
             try {
                 if (response.status == 200 && response.content) {
-                    var j = response.content;
-                    var bgs = j.bgs ? j.bgs[0] : null;
+                    let j = response.content;
+                    let bgs = j.bgs ? j.bgs[0] : null;
 
                     if (!bgs) { scheduleNextPoll(true); return; }
-                    var sgv = parseFloat(bgs.sgv);
-                    var apiUnit = Units.parseUnit(j.units);
-                    if (apiUnit === Units.Unit.MG_DL && sgv < 30) {
+                    let sgv = parseFloat(bgs.sgv);
+                    let apiUnit = Units.parseUnit(j.units);
+                    // If the API reported mg/dL but the raw reading string includes a decimal
+                    // point (e.g. "8.0"), it is actually mmol/L. Only use this check rather than
+                    // overriding genuine severe hypoglycemia (e.g. 25 mg/dL).
+                    if (apiUnit === Units.Unit.MG_DL && String(bgs.sgv).indexOf('.') !== -1) {
                         apiUnit = Units.Unit.MMOL_L;
                     }
                     glucoseValue = Units.convertValue(sgv, apiUnit, units);
-                    glucose = units === Units.Unit.MMOL_L ? glucoseValue.toFixed(1) : glucoseValue;
+                    glucose = units === Units.Unit.MMOL_L ? glucoseValue.toFixed(1) : String(glucoseValue);
                     glucoseColor = Units.getGlucoseColor(glucoseValue, units);
                     lastTimestamp = bgs.datetime;
+
+                    if (bgs.bgdelta !== undefined && bgs.bgdelta !== null) {
+                        let rawDelta = parseFloat(bgs.bgdelta);
+                        if (!isNaN(rawDelta)) {
+                            if (units === Units.Unit.MMOL_L) {
+                                let dMmol = (apiUnit === Units.Unit.MMOL_L ? rawDelta : rawDelta * Units.MMOL_PER_MGDL).toFixed(1);
+                                glucoseDelta = (parseFloat(dMmol) > 0 ? "+" : "") + dMmol;
+                            } else {
+                                let dMg = Math.round(apiUnit === Units.Unit.MMOL_L ? rawDelta / Units.MMOL_PER_MGDL : rawDelta);
+                                glucoseDelta = (dMg > 0 ? "+" : "") + dMg;
+                            }
+                        }
+                    }
                     // Determine staleness immediately from the fetched reading
                     // rather than waiting for the 1s timeAgoTimer. Otherwise a
                     // stale reading would briefly show its green/yellow/red

@@ -4,10 +4,6 @@ import QtQuick.Effects
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasmoid
-import org.kde.plasma.core
-import org.kde.plasma.extras as PlasmaExtras
-import org.kde.kquickcontrolsaddons
-import org.kde.plasma.components
 
 Item {
     id: rootWidget
@@ -33,7 +29,7 @@ Item {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
 
-            property real progress: pollProgress
+            property real progress: root.pollProgress
 
             onProgressChanged: requestPaint()
             onPaint: {
@@ -67,8 +63,8 @@ Item {
 
         Label {
             id: glucoseLabel
-            text: glucose
-            color: isStale ? Qt.rgba(0.6, 0.6, 0.6, 0.8) : glucoseColor
+            text: root.glucose
+            color: root.isStale ? Qt.rgba(0.6, 0.6, 0.6, 0.8) : root.glucoseColor
             font.pointSize: rootWidget.labelSize
             font.bold: true
             anchors.left: pollRing.right
@@ -87,8 +83,8 @@ Item {
 
         Label {
             id: trendLabel
-            text: trend
-            color: isStale ? Qt.rgba(0.6, 0.6, 0.6, 0.8) : glucoseColor
+            text: root.trend
+            color: root.isStale ? Qt.rgba(0.6, 0.6, 0.6, 0.8) : root.glucoseColor
             font.pointSize: rootWidget.labelSize
             font.bold: true
             anchors.left: glucoseLabel.right

@@ -12,6 +12,9 @@ function envelope(request, fallbackContent) {
     } catch (e) {
         error = "parse: " + e.message;
     }
+    if (!error && request.status >= 400) {
+        error = "HTTP " + request.status;
+    }
     return {
         status: request.status,
         content: content === null ? fallbackContent : content,
@@ -20,18 +23,10 @@ function envelope(request, fallbackContent) {
 }
 
 // Internal: perform an XHR with a timeout. The callback always fires exactly
-// once with an envelope. `okReadyState` is XMLHttpRequest.DONE at the time the
-// request finishes or aborts.
+// once with an envelope.
 function xhr(method, url, body, headers, timeoutMs, callback) {
     var request = new XMLHttpRequest();
     var done = false;
-
-    function finish() {
-        if (done) return;
-        done = true;
-        request.abort();
-        callback(envelope(request, null));
-    }
 
     request.onreadystatechange = function () {
         if (request.readyState === XMLHttpRequest.DONE && !done) {
@@ -56,6 +51,13 @@ function xhr(method, url, body, headers, timeoutMs, callback) {
         }
     }
 
+    request.onerror = function () {
+        if (!done) {
+            done = true;
+            callback({ status: 0, content: null, error: "network error" });
+        }
+    };
+
     request.ontimeout = function () {
         if (!done) {
             done = true;
@@ -79,19 +81,26 @@ function post(url, body, callback, timeoutMs) {
 // --- Endpoint builders ------------------------------------------------------
 
 function pebbleUrl(base, token) {
-    return base + "/pebble/?token=" + token;
+    var query = token ? "?token=" + encodeURIComponent(token) : "";
+    return base + "/pebble/" + query;
 }
 
 function entriesUrl(base, token, sinceMs, count) {
-    return base + "/api/v1/entries.json?find[date][$gte]=" + sinceMs
-        + "&count=" + count + "&token=" + token;
+    var url = base + "/api/v1/entries.json?find%5Bdate%5D%5B%24gte%5D=" + sinceMs
+        + "&count=" + count;
+    if (token) url += "&token=" + encodeURIComponent(token);
+    return url;
 }
 
 function treatmentsUrl(base, token, sinceMs) {
-    return base + "/api/v1/treatments.json?find[created_at][$gte]="
-        + new Date(sinceMs).toISOString() + "&token=" + token;
+    var iso = new Date(sinceMs).toISOString();
+    var url = base + "/api/v1/treatments.json?find%5Bcreated_at%5D%5B%24gte%5D="
+        + encodeURIComponent(iso);
+    if (token) url += "&token=" + encodeURIComponent(token);
+    return url;
 }
 
 function postTreatmentUrl(base, token) {
-    return base + "/api/v1/treatments/?token=" + token;
+    var query = token ? "?token=" + encodeURIComponent(token) : "";
+    return base + "/api/v1/treatments/" + query;
 }

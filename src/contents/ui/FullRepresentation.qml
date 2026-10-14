@@ -1,15 +1,11 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Effects
 import QtQuick.Layouts
 import org.kde.quickcharts as Charts
-import org.kde.quickcharts.controls
+import org.kde.quickcharts.controls as ChartsControls
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasmoid
-import org.kde.plasma.core
-import org.kde.plasma.extras as PlasmaExtras
-import org.kde.kquickcontrolsaddons
-import org.kde.plasma.components
-import org.kde.quickcharts.controls as ChartsControls
 
 import "../lib/api.js" as Api
 import "../lib/format.js" as Format
@@ -38,7 +34,7 @@ ColumnLayout {
                 right: parent.right
                 top: parent.top
                 bottom: headerLayout.bottom
-                bottomMargin: Kirigami.Units.largeSpacing
+                bottomMargin: -Kirigami.Units.mediumSpacing
             }
             color: Qt.rgba(Kirigami.Theme.textColor.r,
                            Kirigami.Theme.textColor.g,
@@ -62,9 +58,9 @@ ColumnLayout {
                 topMargin: Kirigami.Units.mediumSpacing
             }
 
-            spacing: Kirigami.Units.smallSpacing
+            spacing: 2
 
-            // Glucose + trend + unit row
+            // Row 1: Glucose + trend arrow + unit
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
@@ -75,8 +71,9 @@ ColumnLayout {
                     id: currentBG
                     text: glucose
                     color: isStale ? Qt.rgba(0.6, 0.6, 0.6, 0.8) : glucoseColor
-                    font.pointSize: 44
+                    font.pointSize: 42
                     font.weight: Font.Black
+                    Layout.alignment: Qt.AlignVCenter
 
                     layer.enabled: true
                     layer.effect: MultiEffect {
@@ -94,29 +91,65 @@ ColumnLayout {
                     color: isStale ? Qt.rgba(0.6, 0.6, 0.6, 0.8) : glucoseColor
                     font.pointSize: 28
                     font.weight: Font.Bold
-                    Layout.alignment: Qt.AlignBottom
-                    bottomPadding: 4
+                    Layout.alignment: Qt.AlignVCenter
+                    leftPadding: 4
+                    rightPadding: 6
+                    topPadding: 4
+                    bottomPadding: 6
                 }
 
                 Label {
+                    id: unitLabel
                     text: Units.getUnitText(units)
                     color: Kirigami.Theme.disabledTextColor
-                    font.pointSize: 12
+                    font.pointSize: 13
                     font.weight: Font.Medium
-                    Layout.alignment: Qt.AlignBottom
-                    bottomPadding: 8
-                    leftPadding: 4
+                    Layout.alignment: Qt.AlignVCenter
+                    leftPadding: 2
                 }
 
                 Item { Layout.fillWidth: true }
             }
 
-            // Time-ago + status dot row
+            // Row 2: Delta badge + status dot + time-ago
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
 
                 Item { Layout.fillWidth: true }
+
+                Rectangle {
+                    id: deltaBadge
+                    visible: root.glucoseDelta !== ""
+                    implicitWidth: deltaLabel.implicitWidth + 12
+                    implicitHeight: 20
+                    radius: 5
+                    color: Qt.rgba(Kirigami.Theme.textColor.r,
+                                   Kirigami.Theme.textColor.g,
+                                   Kirigami.Theme.textColor.b, 0.08)
+                    border.color: Qt.rgba(Kirigami.Theme.textColor.r,
+                                          Kirigami.Theme.textColor.g,
+                                          Kirigami.Theme.textColor.b, 0.16)
+                    border.width: 1
+                    Layout.alignment: Qt.AlignVCenter
+
+                    Label {
+                        id: deltaLabel
+                        anchors.centerIn: parent
+                        text: root.glucoseDelta
+                        color: isStale ? Qt.rgba(0.6, 0.6, 0.6, 0.8) : Kirigami.Theme.textColor
+                        font.pointSize: 10
+                        font.weight: Font.DemiBold
+                    }
+                }
+
+                Label {
+                    text: "·"
+                    visible: deltaBadge.visible
+                    color: Kirigami.Theme.disabledTextColor
+                    font.pointSize: 10
+                    Layout.alignment: Qt.AlignVCenter
+                }
 
                 Rectangle {
                     width: 8
@@ -152,22 +185,71 @@ ColumnLayout {
             color: "transparent"
             visible: usedChartMax > usedChartMin
 
+            property real tLow: units === Units.Unit.MMOL_L ? 4.5 : Math.round(4.5 * 18)
+            property real tHigh: units === Units.Unit.MMOL_L ? 10 : Math.round(10 * 18)
+            property real range: usedChartMax - usedChartMin
+            property real yHigh: range > 0 ? (usedChartMax - tHigh) / range * height : 0
+            property real yLow: range > 0 ? (usedChartMax - tLow) / range * height : 0
+
             // Green in-range band drawn proportionally to chart geometry
             Rectangle {
                 id: inRangeHighlight
                 color: Qt.rgba(0, 0.788, 0.5, 0.08)
                 radius: 2
-                // band covers from tYellowLow to tYellowHigh in chart coordinates
-                property real tLow: units === Units.Unit.MMOL_L ? 4.5 : Math.round(4.5 * 18)
-                property real tHigh: units === Units.Unit.MMOL_L ? 10 : Math.round(10 * 18)
-                property real range: usedChartMax - usedChartMin
-                property real yTop: range > 0 ? (usedChartMax - tHigh) / range * parent.height : 0
-                property real bandH: range > 0 ? (tHigh - tLow) / range * parent.height : 0
+                // band covers from tLow to tHigh in chart coordinates
+                property real clampedHigh: Math.min(usedChartMax, targetBand.tHigh)
+                property real clampedLow: Math.max(usedChartMin, targetBand.tLow)
+                property real yTop: targetBand.range > 0 ? (usedChartMax - clampedHigh) / targetBand.range * parent.height : 0
+                property real bandH: targetBand.range > 0 ? (clampedHigh - clampedLow) / targetBand.range * parent.height : 0
                 anchors.left: parent.left
                 anchors.right: parent.right
                 y: Math.max(0, yTop)
-                height: Math.min(parent.height - y, bandH)
-                visible: range > 0 && tHigh <= usedChartMax && tLow >= usedChartMin
+                height: Math.min(parent.height - y, Math.max(0, bandH))
+                visible: targetBand.range > 0 && targetBand.tLow < usedChartMax && targetBand.tHigh > usedChartMin
+            }
+
+            // Upper target boundary guideline & edge marker
+            Rectangle {
+                id: highGuideLine
+                anchors.left: parent.left
+                anchors.right: parent.right
+                y: Math.round(targetBand.yHigh)
+                height: 1
+                color: Qt.rgba(0, 0.788, 0.5, 0.35)
+                visible: targetBand.range > 0 && targetBand.tHigh <= usedChartMax && targetBand.tHigh >= usedChartMin
+
+                Label {
+                    anchors.right: parent.right
+                    anchors.bottom: parent.top
+                    anchors.rightMargin: 4
+                    anchors.bottomMargin: 1
+                    text: units === Units.Unit.MMOL_L ? targetBand.tHigh.toFixed(1) : targetBand.tHigh.toString()
+                    font.pointSize: 8
+                    font.weight: Font.Medium
+                    color: Qt.rgba(0, 0.788, 0.5, 0.7)
+                }
+            }
+
+            // Lower target boundary guideline & edge marker
+            Rectangle {
+                id: lowGuideLine
+                anchors.left: parent.left
+                anchors.right: parent.right
+                y: Math.round(targetBand.yLow)
+                height: 1
+                color: Qt.rgba(0, 0.788, 0.5, 0.35)
+                visible: targetBand.range > 0 && targetBand.tLow <= usedChartMax && targetBand.tLow >= usedChartMin
+
+                Label {
+                    anchors.right: parent.right
+                    anchors.top: parent.bottom
+                    anchors.rightMargin: 4
+                    anchors.topMargin: 1
+                    text: units === Units.Unit.MMOL_L ? targetBand.tLow.toFixed(1) : targetBand.tLow.toString()
+                    font.pointSize: 8
+                    font.weight: Font.Medium
+                    color: Qt.rgba(0, 0.788, 0.5, 0.7)
+                }
             }
         }
 
@@ -180,7 +262,7 @@ ColumnLayout {
                 left: yAxisLabels.right
                 right: parent.right
                 bottom: xAxisLabels.top
-                top: headerLayout.bottom
+                top: headerBg.bottom
             }
 
             interpolate: true
@@ -244,7 +326,7 @@ ColumnLayout {
         ChartsControls.AxisLabels {
             id: yAxisLabels
 
-            direction: AxisLabels.VerticalBottomTop
+            direction: ChartsControls.AxisLabels.VerticalBottomTop
 
             anchors {
                 left: parent.left
@@ -267,14 +349,14 @@ ColumnLayout {
             }
         }
 
-        GridLines {
+        ChartsControls.GridLines {
             id: horizontalLines
 
             anchors.fill: lineChart
 
             chart: lineChart
 
-            direction: GridLines.Horizontal
+            direction: ChartsControls.GridLines.Horizontal
 
             major.count: 2
             major.lineWidth: 1
@@ -289,14 +371,14 @@ ColumnLayout {
                                  Kirigami.Theme.textColor.b, 0.06)
         }
 
-        GridLines {
+        ChartsControls.GridLines {
             id: verticalLines
 
             anchors.fill: lineChart
 
             chart: lineChart
 
-            direction: GridLines.Vertical
+            direction: ChartsControls.GridLines.Vertical
 
             major.count: 1
             major.lineWidth: 1
@@ -339,6 +421,139 @@ ColumnLayout {
             }
         }
 
+        // ---- Interactive hover inspection layer -------------------------
+        Item {
+            id: chartHoverOverlay
+            anchors.fill: lineChart
+            z: 20
+
+            property int hoveredIndex: -1
+            readonly property bool hasValidData: root.valueSources && root.valueSources.length > 1
+            readonly property real hoveredVal: (hasValidData && hoveredIndex >= 0 && hoveredIndex < root.valueSources.length) ? root.valueSources[hoveredIndex] : 0
+            readonly property var hoveredTs: (hasValidData && hoveredIndex >= 0 && root.chartTimestamps && hoveredIndex < root.chartTimestamps.length) ? root.chartTimestamps[hoveredIndex] : 0
+            readonly property real chartRange: root.usedChartMax - root.usedChartMin
+            readonly property real snappedX: (hasValidData && hoveredIndex >= 0) ? (hoveredIndex / (root.valueSources.length - 1)) * width : 0
+            readonly property real snappedY: (chartRange > 0 && hoveredIndex >= 0) ? ((root.usedChartMax - hoveredVal) / chartRange) * height : 0
+
+            visible: hoverMouseArea.containsMouse && hoveredIndex >= 0 && !isNaN(hoveredVal) && status === "ok"
+
+            // Crosshair vertical hairline
+            Rectangle {
+                x: Math.round(chartHoverOverlay.snappedX)
+                y: 0
+                width: 1
+                height: parent.height
+                color: Qt.rgba(Kirigami.Theme.textColor.r,
+                               Kirigami.Theme.textColor.g,
+                               Kirigami.Theme.textColor.b, 0.22)
+            }
+
+            // Glowing indicator dot
+            Rectangle {
+                x: Math.round(chartHoverOverlay.snappedX - width / 2)
+                y: Math.round(chartHoverOverlay.snappedY - height / 2)
+                width: 16
+                height: 16
+                radius: 8
+                color: Units.isInGreenRange(chartHoverOverlay.hoveredVal, units)
+                       ? Qt.rgba(0, 0.788, 0.5, 0.25)
+                       : Qt.rgba(Kirigami.Theme.highlightColor.r,
+                                 Kirigami.Theme.highlightColor.g,
+                                 Kirigami.Theme.highlightColor.b, 0.25)
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 8
+                    height: 8
+                    radius: 4
+                    color: Units.isInGreenRange(chartHoverOverlay.hoveredVal, units)
+                           ? "#00c950"
+                           : Kirigami.Theme.highlightColor
+                    border.color: Kirigami.Theme.backgroundColor
+                    border.width: 1.5
+                }
+            }
+
+            // Floating inspection tooltip
+            Rectangle {
+                id: hoverTooltip
+                property real targetX: chartHoverOverlay.snappedX - width / 2
+                property real clampedX: Math.max(4, Math.min(parent.width - width - 4, targetX))
+                property bool showBelow: chartHoverOverlay.snappedY < 50
+                x: clampedX
+                y: showBelow ? Math.min(parent.height - height - 4, chartHoverOverlay.snappedY + 12)
+                             : Math.max(4, chartHoverOverlay.snappedY - height - 12)
+                width: tooltipLayout.implicitWidth + 16
+                height: tooltipLayout.implicitHeight + 8
+                radius: 6
+                color: Qt.rgba(Kirigami.Theme.backgroundColor.r,
+                               Kirigami.Theme.backgroundColor.g,
+                               Kirigami.Theme.backgroundColor.b, 0.94)
+                border.color: Qt.rgba(Kirigami.Theme.textColor.r,
+                                      Kirigami.Theme.textColor.g,
+                                      Kirigami.Theme.textColor.b, 0.18)
+                border.width: 1
+
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    shadowEnabled: true
+                    shadowColor: Qt.rgba(0, 0, 0, 0.35)
+                    shadowBlur: 0.3
+                    shadowVerticalOffset: 2
+                }
+
+                RowLayout {
+                    id: tooltipLayout
+                    anchors.centerIn: parent
+                    spacing: 6
+
+                    Label {
+                        text: chartHoverOverlay.hoveredTs > 0 ? Qt.formatTime(new Date(chartHoverOverlay.hoveredTs), "hh:mm") : ""
+                        font.pointSize: 9
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+
+                    Rectangle {
+                        width: 3
+                        height: 3
+                        radius: 1.5
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+
+                    Label {
+                        text: (units === Units.Unit.MMOL_L ? chartHoverOverlay.hoveredVal.toFixed(1) : Math.round(chartHoverOverlay.hoveredVal).toString()) + " " + Units.getUnitText(units)
+                        font.pointSize: 10
+                        font.weight: Font.Bold
+                        color: Units.isInGreenRange(chartHoverOverlay.hoveredVal, units)
+                               ? "#00c950"
+                               : Kirigami.Theme.textColor
+                    }
+                }
+            }
+
+            MouseArea {
+                id: hoverMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.NoButton
+                onPositionChanged: (mouse) => {
+                    if (!chartHoverOverlay.hasValidData) {
+                        chartHoverOverlay.hoveredIndex = -1;
+                        return;
+                    }
+                    var count = root.valueSources.length;
+                    var fraction = Math.max(0, Math.min(1, mouse.x / width));
+                    var idx = Math.round(fraction * (count - 1));
+                    if (idx >= 0 && idx < count && !isNaN(root.valueSources[idx])) {
+                        chartHoverOverlay.hoveredIndex = idx;
+                    } else {
+                        chartHoverOverlay.hoveredIndex = -1;
+                    }
+                }
+                onExited: chartHoverOverlay.hoveredIndex = -1
+            }
+        }
+
         // ---- Treatment indicators overlay --------------------------------
         //
         // Coordinate-system note: Charts.LineChart plots entries at evenly
@@ -356,7 +571,6 @@ ColumnLayout {
         Item {
             id: treatmentOverlay
             anchors.fill: lineChart
-            anchors.margins: Kirigami.Units.mediumSpacing
             clip: true
 
             // 5-minute bucket width in ms. Treatments within the same bucket
@@ -364,10 +578,7 @@ ColumnLayout {
             readonly property int bucketMs: 5 * 60 * 1000
             // Row pitch in pixels. Each stacked treatment occupies this much
             // vertical space below the previous one.
-            readonly property int rowPitch: 18
-            // Right padding in pixels. Visual breathing room for treatments
-            // that land on the chart's right edge.
-            readonly property int rightPadPx: Kirigami.Units.mediumSpacing
+            readonly property int rowPitch: 22
             // Clock-time cutoff after which a treatment is considered off the
             // right edge. We include a few minutes of slack past the last
             // reading so a brand-new treatment still satisfies the visibility
@@ -382,6 +593,8 @@ ColumnLayout {
 
             property var sortedTreatments: []
             property var bucketAssignments: ({})
+
+            onWidthChanged: recomputeBuckets()
 
             // `treatments` lives on the PlasmoidItem root (main.qml); use a
             // Connections object so we react to its change signal without
@@ -410,22 +623,31 @@ ColumnLayout {
                 var sorted = src.slice().sort(function (a, b) {
                     return Treatments.timestampFor(a) - Treatments.timestampFor(b);
                 });
+                var w = treatmentOverlay.width > 0 ? treatmentOverlay.width : (diagramRoot.width > 0 ? diagramRoot.width : 600);
                 var assignments = ({});
-                var prevBucket = -1;
-                var rowCount = 0;
+                var rowLastX = [];
+                var minClearance = 115;
+
                 for (var i = 0; i < sorted.length; i++) {
                     var t = sorted[i];
                     var ts = Treatments.timestampFor(t);
-                    var bucket = Math.floor(ts / bucketMs);
-                    if (bucket === prevBucket) {
-                        rowCount++;
-                    } else {
-                        rowCount = 0;
-                        prevBucket = bucket;
+                    var x = treatmentOverlay.timestampToPixelX(ts, w);
+
+                    var assignedRow = 0;
+                    var found = false;
+                    for (var r = 0; r < rowLastX.length; r++) {
+                        if (x >= rowLastX[r] + minClearance) {
+                            assignedRow = r;
+                            rowLastX[r] = x;
+                            found = true;
+                            break;
+                        }
                     }
-                    // Index in the sorted array is the lookup key into the
-                    // assignments map; the Repeater reads it back as `index`.
-                    assignments[i] = rowCount;
+                    if (!found) {
+                        assignedRow = rowLastX.length;
+                        rowLastX.push(x);
+                    }
+                    assignments[i] = assignedRow;
                 }
                 sortedTreatments = sorted;
                 bucketAssignments = assignments;
@@ -433,15 +655,12 @@ ColumnLayout {
 
             // Per-pixel x for a delegate. We compute the fractional entry
             // index in the shared, tested `treatments.js` helper and then
-            // scale it to chart width, leaving a `rightPadPx` of breathing
-            // room at the right edge so the fr = 1.0 case (treatment at the
-            // last reading) does not collide with the chart border.
+            // scale it to chart width matching Charts.LineChart's plot geometry.
             function timestampToPixelX(ts, width) {
                 var ct = root.chartTimestamps;
                 if (!ct || ct.length < 2) return 0;
                 var fr = Treatments.timestampToFractionalIndex(ct, ts);
-                var usable = Math.max(1, width - rightPadPx);
-                return (fr / (ct.length - 1)) * usable;
+                return (fr / (ct.length - 1)) * width;
             }
 
             // Single self-scheduling tick used to keep every delegate's
@@ -527,6 +746,7 @@ ColumnLayout {
 
                     property var treatment: modelData
                     property var timestamp: Treatments.timestampFor(treatment)
+                    readonly property color treatmentColor: Treatments.colorFor(delegateRoot.treatment)
 
                     // x position of the dot's CENTER, in chart index-space.
                     // Dot is anchored to this exact x; labels are anchored
@@ -573,61 +793,95 @@ ColumnLayout {
                     }
                     property bool hovered: false
 
-                    // We anchor at the dot's center on the time axis. The dot
-                    // itself is small (10x10) and lives at the top-left of this
-                    // Item; the labels extend to the right and below. Width/
-                    // height just size the MouseArea hit region.
-                    x: xPos
+                    // Position delegate horizontally so pill is centered over xPos,
+                    // clamped within bounds of the treatment overlay.
+                    x: Math.max(0, Math.min(treatmentOverlay.width - width, Math.round(xPos - width / 2)))
                     y: yBase
                     z: hovered ? 100 : 1
 
-                    width: dot.width + 4 + valueLabel.implicitWidth
-                    height: dot.height + 2 + timeLabel.implicitHeight
+                    width: pill.width
+                    height: pill.height
 
+                    // Subtle vertical drop guideline from the bottom of the pill
+                    // down to the timeline axis at xPos.
                     Rectangle {
-                        id: dot
-                        width: 10
-                        height: 10
-                        radius: width / 2
-                        color: Treatments.colorFor(treatment)
-                        border.color: Kirigami.Theme.backgroundColor
+                        id: dropGuideline
+                        x: Math.round(delegateRoot.xPos - delegateRoot.x)
+                        y: pill.height
+                        width: 1
+                        height: Math.max(0, treatmentOverlay.height - delegateRoot.y - pill.height)
+                        color: delegateRoot.treatmentColor
+                        opacity: delegateRoot.hovered ? 0.5 : 0.18
+                        Behavior on opacity { NumberAnimation { duration: 150 } }
+                    }
+
+                    // Frosted pill badge
+                    Rectangle {
+                        id: pill
+                        width: pillLayout.implicitWidth + 12
+                        height: 18
+                        radius: 9
+                        color: Qt.rgba(Kirigami.Theme.backgroundColor.r,
+                                       Kirigami.Theme.backgroundColor.g,
+                                       Kirigami.Theme.backgroundColor.b,
+                                       delegateRoot.hovered ? 0.96 : 0.82)
+                        border.color: delegateRoot.hovered
+                                      ? delegateRoot.treatmentColor
+                                      : Qt.rgba(delegateRoot.treatmentColor.r,
+                                                delegateRoot.treatmentColor.g,
+                                                delegateRoot.treatmentColor.b, 0.4)
                         border.width: 1
-                        // Anchor so the dot's horizontal center sits at
-                        // delegateRoot.x == xPos, regardless of the parent
-                        // Item's rightward-extending label width.
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        scale: delegateRoot.hovered ? 1.6 : 1.0
+                        scale: delegateRoot.hovered ? 1.05 : 1.0
                         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
-                    }
+                        Behavior on border.color { ColorAnimation { duration: 120 } }
 
-                    Label {
-                        id: valueLabel
-                        text: Treatments.labelFor(treatment)
-                        color: Kirigami.Theme.textColor
-                        font.pointSize: 10
-                        font.weight: Font.Medium
-                        opacity: delegateRoot.hovered ? 1.0 : 0.85
-                        anchors.left: dot.right
-                        anchors.leftMargin: 4
-                        anchors.verticalCenter: dot.verticalCenter
-                        Behavior on opacity { NumberAnimation { duration: 120 } }
-                    }
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            shadowEnabled: delegateRoot.hovered
+                            shadowColor: Qt.rgba(0, 0, 0, 0.3)
+                            shadowBlur: 0.2
+                            shadowVerticalOffset: 1
+                        }
 
-                    Label {
-                        id: timeLabel
-                        text: timeAgoText
-                        color: Kirigami.Theme.disabledTextColor
-                        font.pointSize: 9
-                        opacity: delegateRoot.hovered ? 0.95 : 0.65
-                        anchors.horizontalCenter: dot.horizontalCenter
-                        anchors.top: dot.bottom
-                        anchors.topMargin: 2
-                        Behavior on opacity { NumberAnimation { duration: 120 } }
+                        RowLayout {
+                            id: pillLayout
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            Rectangle {
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: delegateRoot.treatmentColor
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+
+                            Label {
+                                text: Treatments.labelFor(delegateRoot.treatment)
+                                color: Kirigami.Theme.textColor
+                                font.pointSize: 8
+                                font.weight: Font.DemiBold
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+
+                            Label {
+                                text: "·"
+                                color: Kirigami.Theme.disabledTextColor
+                                font.pointSize: 7
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+
+                            Label {
+                                text: delegateRoot.timeAgoText
+                                color: Kirigami.Theme.disabledTextColor
+                                font.pointSize: 8
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                        }
                     }
 
                     MouseArea {
-                        anchors.fill: parent
+                        anchors.fill: pill
                         hoverEnabled: true
                         onEntered: delegateRoot.hovered = true
                         onExited: delegateRoot.hovered = false
@@ -661,13 +915,13 @@ ColumnLayout {
             }
 
             Component.onCompleted: {
-                var initial = lastSelectedType;
+                var initial = root.lastSelectedType;
                 if (initial === "humalog") initial = "admelog";
                 selectedType = initial;
             }
 
             onSelectedTypeChanged: {
-                lastSelectedType = selectedType;
+                root.lastSelectedType = selectedType;
                 Qt.callLater(function() { valueInput.forceActiveFocus(); });
             }
 
@@ -713,8 +967,8 @@ ColumnLayout {
 
                         readonly property color accentColor: modelData.accent
 
-                        Keys.onLeftPressed: { treatmentBar.cycleType(-1); event.accepted = true; }
-                        Keys.onRightPressed: { treatmentBar.cycleType(1); event.accepted = true; }
+                        Keys.onLeftPressed: (event) => { treatmentBar.cycleType(-1); event.accepted = true; }
+                        Keys.onRightPressed: (event) => { treatmentBar.cycleType(1); event.accepted = true; }
 
                         background: Rectangle {
                             color: typeBtn.checked ? typeBtn.accentColor
@@ -750,17 +1004,17 @@ ColumnLayout {
                     leftPadding: 10
                     rightPadding: 10
 
-                    Keys.onLeftPressed: { treatmentBar.cycleType(-1); event.accepted = true; }
-                    Keys.onRightPressed: { treatmentBar.cycleType(1); event.accepted = true; }
-                    Keys.onReturnPressed: { addBtn.clicked(); event.accepted = true; }
-                    Keys.onEnterPressed: { addBtn.clicked(); event.accepted = true; }
+                    Keys.onLeftPressed: (event) => { treatmentBar.cycleType(-1); event.accepted = true; }
+                    Keys.onRightPressed: (event) => { treatmentBar.cycleType(1); event.accepted = true; }
+                    Keys.onReturnPressed: (event) => { addBtn.clicked(); event.accepted = true; }
+                    Keys.onEnterPressed: (event) => { addBtn.clicked(); event.accepted = true; }
                 }
 
                 TextField {
                     id: timeInput
                     placeholderText: qsTr("HH:MM")
                     font.pointSize: treatmentBar.valueFontSize
-                    Layout.preferredWidth: 90
+                    Layout.preferredWidth: 85
                     Layout.fillHeight: true
                     maximumLength: 5
                     selectByMouse: true
@@ -772,16 +1026,17 @@ ColumnLayout {
                     // rejected rather than silently coerced.
                     validator: RegularExpressionValidator { regularExpression: /^(0?\d|1\d|2[0-3]):[0-5]\d$/ }
 
-                    Keys.onLeftPressed: { treatmentBar.cycleType(-1); event.accepted = true; }
-                    Keys.onRightPressed: { treatmentBar.cycleType(1); event.accepted = true; }
-                    Keys.onReturnPressed: { addBtn.clicked(); event.accepted = true; }
-                    Keys.onEnterPressed: { addBtn.clicked(); event.accepted = true; }
+                    Keys.onLeftPressed: (event) => { treatmentBar.cycleType(-1); event.accepted = true; }
+                    Keys.onRightPressed: (event) => { treatmentBar.cycleType(1); event.accepted = true; }
+                    Keys.onReturnPressed: (event) => { addBtn.clicked(); event.accepted = true; }
+                    Keys.onEnterPressed: (event) => { addBtn.clicked(); event.accepted = true; }
                 }
 
                 Button {
                     id: addBtn
                     text: qsTr("Add")
-                    enabled: valueInput.text.length > 0
+                    property bool isSubmitting: false
+                    enabled: !isSubmitting && valueInput.text.length > 0 && !isNaN(parseValue()) && (timeInput.text.length === 0 || timeInput.acceptableInput)
                     Layout.minimumWidth: 64
                     Layout.fillHeight: true
                     leftPadding: 14
@@ -813,23 +1068,22 @@ ColumnLayout {
                         var value = parseFloat(text);
                         if (isNaN(value) || value <= 0) return NaN;
                         if (typeKey === "carbs") {
+                            if (value > 500) return NaN;
                             return Math.round(value);
                         }
+                        if (value > 150) return NaN;
                         return value;
                     }
 
                     onClicked: {
-                        if (valueInput.text.length === 0) return;
+                        if (!enabled) return;
 
                         var value = parseValue();
                         if (isNaN(value)) return;
 
-                        // Don't actually disable if a time was provided and is
-                        // malformed — let the validator block the field, but
-                        // we still short-circuit here.
                         if (timeInput.text.length > 0 && !timeInput.acceptableInput) return;
 
-                        addBtn.enabled = false;
+                        isSubmitting = true;
 
                         var dateObj = new Date();
                         if (timeInput.text.length >= 4 && timeInput.text.indexOf(":") > 0) {
@@ -840,18 +1094,18 @@ ColumnLayout {
                             }
                         }
 
-                        var url = Api.postTreatmentUrl(sanitizedNightscoutURL, nightscoutToken);
+                        var url = Api.postTreatmentUrl(root.sanitizedNightscoutURL, root.nightscoutToken);
                         var payload = Treatments.buildPayload(treatmentBar.selectedType, value, dateObj);
 
                         Api.post(url, payload, function (response) {
-                            addBtn.enabled = true;
+                            addBtn.isSubmitting = false;
                             if (response.status < 300) {
                                 valueInput.text = "";
                                 timeInput.text = "";
                                 Qt.callLater(function() { valueInput.forceActiveFocus(); });
-                                reloadChart();
-                            } else if (response.error) {
-                                console.warn("nightscout: treatment POST error:", response.error);
+                                root.reloadChart();
+                            } else {
+                                console.warn("nightscout: treatment POST failed:", response.status, response.error);
                             }
                         });
                     }

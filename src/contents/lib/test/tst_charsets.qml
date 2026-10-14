@@ -37,6 +37,20 @@ TestCase {
         }
     }
 
+    function test_getTrendArrow_outOfRange() {
+        compare(Charsets.getTrendArrow(Charsets.Charset.UNICODE_1, -1), "?");
+        compare(Charsets.getTrendArrow(Charsets.Charset.UNICODE_1, 99), "?");
+        compare(Charsets.getTrendArrow(Charsets.Charset.UNICODE_1, null), "?");
+        compare(Charsets.getTrendArrow(999, 4), "→");
+    }
+
+    function test_getTrendArrow_stringNames() {
+        compare(Charsets.getTrendArrow(Charsets.Charset.UNICODE_1, "Flat"), "→");
+        compare(Charsets.getTrendArrow(Charsets.Charset.UNICODE_1, "SingleUp"), "↑");
+        compare(Charsets.getTrendArrow(Charsets.Charset.UNICODE_1, "FortyFiveDown"), "↘");
+        compare(Charsets.getTrendArrow(Charsets.Charset.UNICODE_1, "unknown_string"), "?");
+    }
+
     function test_getCharsetText() {
         var t0 = Charsets.getCharsetText(Charsets.Charset.UNICODE_1);
         var t1 = Charsets.getCharsetText(Charsets.Charset.UNICODE_2);
