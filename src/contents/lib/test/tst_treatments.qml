@@ -234,6 +234,27 @@ TestCase {
         compare(Treatments.timestampFor({}), 0);
     }
 
+    function test_idFor_mongo_id() {
+        compare(Treatments.idFor({ _id: "66123456789abcdef0123456" }), "66123456789abcdef0123456");
+    }
+
+    function test_idFor_identifier() {
+        compare(Treatments.idFor({ identifier: "kde-w-abc-12345" }), "kde-w-abc-12345");
+    }
+
+    function test_idFor_id() {
+        compare(Treatments.idFor({ id: "custom-id" }), "custom-id");
+    }
+
+    function test_idFor_precedence() {
+        compare(Treatments.idFor({ _id: "primary", identifier: "secondary", id: "tertiary" }), "primary");
+    }
+
+    function test_idFor_nullish_or_missing() {
+        compare(Treatments.idFor(null), "");
+        compare(Treatments.idFor({}), "");
+    }
+
     // typeByKey tests
     function test_typeByKey_known() {
         compare(Treatments.typeByKey("carbs").key,   "carbs");
@@ -260,5 +281,68 @@ TestCase {
             verify(t.label, "missing label");
             verify(t.accent.startsWith("#"), "accent must be a hex color: " + t.accent);
         }
+    }
+
+    function test_getTypes_default() {
+        var list = Treatments.getTypes();
+        compare(list.length, 3);
+        compare(list[0].label, "Carbs");
+        compare(list[1].label, "Admelog");
+        compare(list[2].label, "Tresiba");
+    }
+
+    function test_getTypes_showBasalFalse() {
+        var list = Treatments.getTypes("Humalog", "Lantus", false);
+        compare(list.length, 2);
+        compare(list[0].key, "carbs");
+        compare(list[1].key, "admelog");
+        compare(list[1].label, "Humalog");
+    }
+
+    function test_getTypes_customNames() {
+        var list = Treatments.getTypes("Novolog", "Lantus", true);
+        compare(list.length, 3);
+        compare(list[1].label, "Novolog");
+        compare(list[1].insulin, "Novolog");
+        compare(list[2].label, "Lantus");
+        compare(list[2].insulin, "Lantus");
+    }
+
+    function test_typeByKey_customNames() {
+        var rapid = Treatments.typeByKey("admelog", "Novolog", "Lantus");
+        compare(rapid.label, "Novolog");
+        compare(rapid.insulin, "Novolog");
+
+        var basal = Treatments.typeByKey("tresiba", "Novolog", "Lantus");
+        compare(basal.label, "Lantus");
+        compare(basal.insulin, "Lantus");
+    }
+
+    function test_buildPayload_customRapidName() {
+        var d = new Date(1700000000000);
+        var p = Treatments.buildPayload("admelog", 4.0, d, "Fiasp", "Toujeo");
+        compare(p.journalTitle, "Fiasp");
+        compare(p.insulinType, "Fiasp");
+        compare(p.insulin, 4.0);
+        compare(p.isBasalInsulin, false);
+    }
+
+    function test_buildPayload_customBasalName() {
+        var d = new Date(1700000000000);
+        var p = Treatments.buildPayload("tresiba", 18.0, d, "Fiasp", "Toujeo");
+        compare(p.journalTitle, "Toujeo");
+        compare(p.insulinType, "Toujeo");
+        compare(p.insulin, 18.0);
+        compare(p.isBasalInsulin, true);
+    }
+
+    function test_colorFor_customRapidName() {
+        var record = {
+            insulin: 5,
+            insulinType: "MyCustomRapid",
+            date: 1700000000000
+        };
+        // Passing custom name "MyCustomRapid" allows isRapidInsulin to color it pink
+        compare(Treatments.colorFor(record, "MyCustomRapid"), "#ec4899");
     }
 }

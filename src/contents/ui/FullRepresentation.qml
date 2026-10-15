@@ -98,16 +98,6 @@ ColumnLayout {
                     bottomPadding: 6
                 }
 
-                Label {
-                    id: unitLabel
-                    text: Units.getUnitText(units)
-                    color: Kirigami.Theme.disabledTextColor
-                    font.pointSize: 13
-                    font.weight: Font.Medium
-                    Layout.alignment: Qt.AlignVCenter
-                    leftPadding: 2
-                }
-
                 Item { Layout.fillWidth: true }
             }
 
@@ -143,20 +133,12 @@ ColumnLayout {
                     }
                 }
 
-                Label {
-                    text: "·"
-                    visible: deltaBadge.visible
-                    color: Kirigami.Theme.disabledTextColor
-                    font.pointSize: 10
-                    Layout.alignment: Qt.AlignVCenter
-                }
-
                 Rectangle {
                     width: 8
                     height: 8
                     radius: width / 2
                     color: isStale ? "#f59e0b"
-                                   : (Units.isInGreenRange(glucoseValue, units) ? "#00c950" : glucoseColor)
+                                   : (Units.isInGreenRange(glucoseValue, units, root.targetLow, root.targetHigh) ? "#00c950" : glucoseColor)
                     Layout.alignment: Qt.AlignVCenter
                     Behavior on color { ColorAnimation { duration: 200 } }
                 }
@@ -185,8 +167,8 @@ ColumnLayout {
             color: "transparent"
             visible: usedChartMax > usedChartMin
 
-            property real tLow: units === Units.Unit.MMOL_L ? 4.5 : Math.round(4.5 * 18)
-            property real tHigh: units === Units.Unit.MMOL_L ? 10 : Math.round(10 * 18)
+            property real tLow: root.targetLow > 0 ? root.targetLow : (units === Units.Unit.MMOL_L ? 4.5 : Math.round(4.5 * 18))
+            property real tHigh: root.targetHigh > 0 ? root.targetHigh : (units === Units.Unit.MMOL_L ? 10 : Math.round(10 * 18))
             property real range: usedChartMax - usedChartMin
             property real yHigh: range > 0 ? (usedChartMax - tHigh) / range * height : 0
             property real yLow: range > 0 ? (usedChartMax - tLow) / range * height : 0
@@ -435,7 +417,7 @@ ColumnLayout {
             readonly property real snappedX: (hasValidData && hoveredIndex >= 0) ? (hoveredIndex / (root.valueSources.length - 1)) * width : 0
             readonly property real snappedY: (chartRange > 0 && hoveredIndex >= 0) ? ((root.usedChartMax - hoveredVal) / chartRange) * height : 0
 
-            visible: hoverMouseArea.containsMouse && hoveredIndex >= 0 && !isNaN(hoveredVal) && status === "ok"
+            visible: hoverMouseArea.containsMouse && hoveredIndex >= 0 && !isNaN(hoveredVal) && status === "ok" && treatmentOverlay.selectedTreatment === null
 
             // Crosshair vertical hairline
             Rectangle {
@@ -455,7 +437,7 @@ ColumnLayout {
                 width: 16
                 height: 16
                 radius: 8
-                color: Units.isInGreenRange(chartHoverOverlay.hoveredVal, units)
+                color: Units.isInGreenRange(chartHoverOverlay.hoveredVal, units, root.targetLow, root.targetHigh)
                        ? Qt.rgba(0, 0.788, 0.5, 0.25)
                        : Qt.rgba(Kirigami.Theme.highlightColor.r,
                                  Kirigami.Theme.highlightColor.g,
@@ -466,7 +448,7 @@ ColumnLayout {
                     width: 8
                     height: 8
                     radius: 4
-                    color: Units.isInGreenRange(chartHoverOverlay.hoveredVal, units)
+                    color: Units.isInGreenRange(chartHoverOverlay.hoveredVal, units, root.targetLow, root.targetHigh)
                            ? "#00c950"
                            : Kirigami.Theme.highlightColor
                     border.color: Kirigami.Theme.backgroundColor
@@ -524,9 +506,9 @@ ColumnLayout {
                         text: (units === Units.Unit.MMOL_L ? chartHoverOverlay.hoveredVal.toFixed(1) : Math.round(chartHoverOverlay.hoveredVal).toString()) + " " + Units.getUnitText(units)
                         font.pointSize: 10
                         font.weight: Font.Bold
-                        color: Units.isInGreenRange(chartHoverOverlay.hoveredVal, units)
+                        color: Units.isInGreenRange(chartHoverOverlay.hoveredVal, units, root.targetLow, root.targetHigh)
                                ? "#00c950"
-                               : Kirigami.Theme.textColor
+                                : Kirigami.Theme.textColor
                     }
                 }
             }
@@ -593,6 +575,9 @@ ColumnLayout {
 
             property var sortedTreatments: []
             property var bucketAssignments: ({})
+            property var selectedTreatment: null
+            property real selectedTreatmentX: 0
+            property real selectedTreatmentY: 0
 
             onWidthChanged: recomputeBuckets()
 
@@ -618,6 +603,7 @@ ColumnLayout {
                 if (!src || src.length === 0) {
                     sortedTreatments = [];
                     bucketAssignments = ({});
+                    selectedTreatment = null;
                     return;
                 }
                 var sorted = src.slice().sort(function (a, b) {
@@ -651,6 +637,20 @@ ColumnLayout {
                 }
                 sortedTreatments = sorted;
                 bucketAssignments = assignments;
+
+                if (selectedTreatment) {
+                    var selId = Treatments.idFor(selectedTreatment);
+                    var stillExists = false;
+                    for (var j = 0; j < sorted.length; j++) {
+                        if (Treatments.idFor(sorted[j]) === selId) {
+                            stillExists = true;
+                            break;
+                        }
+                    }
+                    if (!stillExists) {
+                        selectedTreatment = null;
+                    }
+                }
             }
 
             // Per-pixel x for a delegate. We compute the fractional entry
@@ -746,7 +746,7 @@ ColumnLayout {
 
                     property var treatment: modelData
                     property var timestamp: Treatments.timestampFor(treatment)
-                    readonly property color treatmentColor: Treatments.colorFor(delegateRoot.treatment)
+                    readonly property color treatmentColor: Treatments.colorFor(delegateRoot.treatment, root.rapidName)
 
                     // x position of the dot's CENTER, in chart index-space.
                     // Dot is anchored to this exact x; labels are anchored
@@ -792,12 +792,27 @@ ColumnLayout {
                         return Format.timeAgo(timestamp);
                     }
                     property bool hovered: false
+                    readonly property bool isSelected: treatmentOverlay.selectedTreatment !== null
+                        && (treatmentOverlay.selectedTreatment === delegateRoot.treatment
+                            || (Treatments.idFor(treatmentOverlay.selectedTreatment) !== ""
+                                && Treatments.idFor(treatmentOverlay.selectedTreatment) === Treatments.idFor(delegateRoot.treatment)))
+
+                    onXChanged: {
+                        if (delegateRoot.isSelected) {
+                            treatmentOverlay.selectedTreatmentX = delegateRoot.x + delegateRoot.width / 2;
+                        }
+                    }
+                    onYChanged: {
+                        if (delegateRoot.isSelected) {
+                            treatmentOverlay.selectedTreatmentY = delegateRoot.y + delegateRoot.height;
+                        }
+                    }
 
                     // Position delegate horizontally so pill is centered over xPos,
                     // clamped within bounds of the treatment overlay.
                     x: Math.max(0, Math.min(treatmentOverlay.width - width, Math.round(xPos - width / 2)))
                     y: yBase
-                    z: hovered ? 100 : 1
+                    z: isSelected ? 250 : (hovered ? 180 : 160)
 
                     width: pill.width
                     height: pill.height
@@ -811,7 +826,7 @@ ColumnLayout {
                         width: 1
                         height: Math.max(0, treatmentOverlay.height - delegateRoot.y - pill.height)
                         color: delegateRoot.treatmentColor
-                        opacity: delegateRoot.hovered ? 0.5 : 0.18
+                        opacity: (delegateRoot.hovered || delegateRoot.isSelected) ? 0.5 : 0.18
                         Behavior on opacity { NumberAnimation { duration: 150 } }
                     }
 
@@ -821,25 +836,31 @@ ColumnLayout {
                         width: pillLayout.implicitWidth + 12
                         height: 18
                         radius: 9
-                        color: Qt.rgba(Kirigami.Theme.backgroundColor.r,
-                                       Kirigami.Theme.backgroundColor.g,
-                                       Kirigami.Theme.backgroundColor.b,
-                                       delegateRoot.hovered ? 0.96 : 0.82)
-                        border.color: delegateRoot.hovered
-                                      ? delegateRoot.treatmentColor
-                                      : Qt.rgba(delegateRoot.treatmentColor.r,
-                                                delegateRoot.treatmentColor.g,
-                                                delegateRoot.treatmentColor.b, 0.4)
-                        border.width: 1
-                        scale: delegateRoot.hovered ? 1.05 : 1.0
+                        color: delegateRoot.isSelected
+                               ? Qt.rgba(Kirigami.Theme.backgroundColor.r,
+                                         Kirigami.Theme.backgroundColor.g,
+                                         Kirigami.Theme.backgroundColor.b, 0.98)
+                               : Qt.rgba(Kirigami.Theme.backgroundColor.r,
+                                         Kirigami.Theme.backgroundColor.g,
+                                         Kirigami.Theme.backgroundColor.b,
+                                         delegateRoot.hovered ? 0.96 : 0.82)
+                        border.color: delegateRoot.isSelected
+                                      ? Kirigami.Theme.highlightColor
+                                      : (delegateRoot.hovered
+                                         ? delegateRoot.treatmentColor
+                                         : Qt.rgba(delegateRoot.treatmentColor.r,
+                                                   delegateRoot.treatmentColor.g,
+                                                   delegateRoot.treatmentColor.b, 0.4))
+                        border.width: delegateRoot.isSelected ? 2 : 1
+                        scale: delegateRoot.isSelected ? 1.08 : (delegateRoot.hovered ? 1.05 : 1.0)
                         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
                         Behavior on border.color { ColorAnimation { duration: 120 } }
 
                         layer.enabled: true
                         layer.effect: MultiEffect {
-                            shadowEnabled: delegateRoot.hovered
-                            shadowColor: Qt.rgba(0, 0, 0, 0.3)
-                            shadowBlur: 0.2
+                            shadowEnabled: delegateRoot.hovered || delegateRoot.isSelected
+                            shadowColor: Qt.rgba(0, 0, 0, 0.35)
+                            shadowBlur: delegateRoot.isSelected ? 0.3 : 0.2
                             shadowVerticalOffset: 1
                         }
 
@@ -883,9 +904,225 @@ ColumnLayout {
                     MouseArea {
                         anchors.fill: pill
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onEntered: delegateRoot.hovered = true
                         onExited: delegateRoot.hovered = false
-                        propagateComposedEvents: true
+                        onClicked: {
+                            if (delegateRoot.isSelected) {
+                                treatmentOverlay.selectedTreatment = null;
+                            } else {
+                                treatmentOverlay.selectedTreatment = delegateRoot.treatment;
+                                treatmentOverlay.selectedTreatmentX = delegateRoot.x + delegateRoot.width / 2;
+                                treatmentOverlay.selectedTreatmentY = delegateRoot.y + delegateRoot.height;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Transparent background dismiss area when a treatment is selected
+            MouseArea {
+                id: dismissArea
+                anchors.fill: parent
+                z: 150
+                visible: treatmentOverlay.selectedTreatment !== null
+                onClicked: treatmentOverlay.selectedTreatment = null
+            }
+
+            // Floating confirmation card to delete the selected treatment
+            Rectangle {
+                id: deleteCard
+                visible: treatmentOverlay.selectedTreatment !== null
+                z: 300
+
+                property var targetTreatment: treatmentOverlay.selectedTreatment
+                property string treatmentId: targetTreatment ? Treatments.idFor(targetTreatment) : ""
+                property bool isDeleting: false
+                property string errorMessage: ""
+
+                property real targetX: treatmentOverlay.selectedTreatmentX - width / 2
+                property real clampedX: Math.max(8, Math.min(treatmentOverlay.width - width - 8, targetX))
+                property bool showBelow: (treatmentOverlay.selectedTreatmentY + height + 10) <= treatmentOverlay.height
+
+                x: clampedX
+                y: showBelow
+                   ? Math.max(4, treatmentOverlay.selectedTreatmentY + 6)
+                   : Math.max(4, treatmentOverlay.selectedTreatmentY - 18 - height - 6)
+
+                implicitWidth: cardLayout.implicitWidth + 24
+                implicitHeight: cardLayout.implicitHeight + 14
+                width: implicitWidth
+                height: implicitHeight
+                radius: 8
+                color: Kirigami.Theme.backgroundColor
+                border.color: Qt.rgba(Kirigami.Theme.textColor.r,
+                                      Kirigami.Theme.textColor.g,
+                                      Kirigami.Theme.textColor.b, 0.22)
+                border.width: 1
+
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    shadowEnabled: true
+                    shadowColor: Qt.rgba(0, 0, 0, 0.5)
+                    shadowBlur: 0.4
+                    shadowVerticalOffset: 3
+                }
+
+                // Absorbs clicks on the card's background so they don't fall through to dismissArea
+                MouseArea {
+                    anchors.fill: parent
+                    z: -1
+                }
+
+                RowLayout {
+                    id: cardLayout
+                    anchors.centerIn: parent
+                    spacing: 8
+
+                    Rectangle {
+                        width: 7
+                        height: 7
+                        radius: 3.5
+                        color: deleteCard.targetTreatment ? Treatments.colorFor(deleteCard.targetTreatment, root.rapidName) : Kirigami.Theme.highlightColor
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Label {
+                        text: {
+                            if (!deleteCard.targetTreatment) return "";
+                            var lbl = Treatments.labelFor(deleteCard.targetTreatment);
+                            return qsTr("Delete %1?").arg(lbl);
+                        }
+                        font.pointSize: 9
+                        font.weight: Font.DemiBold
+                        color: Kirigami.Theme.textColor
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Label {
+                        text: deleteCard.targetTreatment ? Format.timeAgo(Treatments.timestampFor(deleteCard.targetTreatment)) : ""
+                        font.pointSize: 8.5
+                        color: Kirigami.Theme.disabledTextColor
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Item {
+                        width: 4
+                        height: 1
+                    }
+
+                    Button {
+                        id: cancelBtn
+                        text: qsTr("Cancel")
+                        implicitHeight: 26
+                        implicitWidth: cancelText.implicitWidth + 20
+                        Layout.alignment: Qt.AlignVCenter
+                        hoverEnabled: true
+
+                        contentItem: Text {
+                            id: cancelText
+                            text: cancelBtn.text
+                            color: cancelBtn.hovered
+                                   ? Kirigami.Theme.textColor
+                                   : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.8)
+                            font.pointSize: 9
+                            font.weight: Font.DemiBold
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        background: Rectangle {
+                            radius: 6
+                            color: cancelBtn.down
+                                   ? Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.16)
+                                   : (cancelBtn.hovered
+                                      ? Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.10)
+                                      : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05))
+                            border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, cancelBtn.hovered ? 0.3 : 0.16)
+                            border.width: 1
+                            Behavior on color { ColorAnimation { duration: 100 } }
+                            Behavior on border.color { ColorAnimation { duration: 100 } }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            acceptedButtons: Qt.NoButton
+                        }
+
+                        onClicked: {
+                            deleteCard.errorMessage = "";
+                            treatmentOverlay.selectedTreatment = null;
+                        }
+                    }
+
+                    Button {
+                        id: deleteConfirmBtn
+                        text: deleteCard.isDeleting ? qsTr("Deleting…") : qsTr("Delete")
+                        enabled: !deleteCard.isDeleting && deleteCard.treatmentId !== ""
+                        implicitHeight: 26
+                        implicitWidth: deleteText.implicitWidth + 22
+                        Layout.alignment: Qt.AlignVCenter
+                        hoverEnabled: true
+
+                        contentItem: Text {
+                            id: deleteText
+                            text: deleteConfirmBtn.text
+                            color: "#ffffff"
+                            font.pointSize: 9
+                            font.weight: Font.Bold
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        background: Rectangle {
+                            radius: 6
+                            color: deleteConfirmBtn.down
+                                   ? "#991b1b"
+                                   : (deleteConfirmBtn.hovered ? "#dc2626" : "#b91c1c")
+                            border.color: deleteConfirmBtn.hovered
+                                          ? "#f87171"
+                                          : Qt.rgba(248/255, 113/255, 113/255, 0.35)
+                            border.width: 1
+                            opacity: deleteConfirmBtn.enabled ? 1.0 : 0.45
+                            Behavior on color { ColorAnimation { duration: 100 } }
+                            Behavior on border.color { ColorAnimation { duration: 100 } }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            acceptedButtons: Qt.NoButton
+                        }
+
+                        onClicked: {
+                            if (!enabled || !deleteCard.targetTreatment) return;
+                            var id = deleteCard.treatmentId;
+                            if (!id) return;
+                            deleteCard.isDeleting = true;
+                            deleteCard.errorMessage = "";
+
+                            var url = Api.deleteTreatmentUrl(root.sanitizedNightscoutURL, root.nightscoutToken, id);
+                            Api.del(url, root.nightscoutToken, function (response) {
+                                deleteCard.isDeleting = false;
+                                if (response.status >= 200 && response.status < 300) {
+                                    treatmentOverlay.selectedTreatment = null;
+                                    root.reloadChart();
+                                } else {
+                                    console.warn("nightscout: treatment DELETE failed:", response.status, response.error);
+                                    deleteCard.errorMessage = qsTr("Failed (%1)").arg(response.status || "err");
+                                }
+                            });
+                        }
+                    }
+
+                    Label {
+                        visible: deleteCard.errorMessage !== ""
+                        text: deleteCard.errorMessage
+                        color: "#ef4444"
+                        font.pointSize: 8
+                        font.weight: Font.Medium
+                        Layout.alignment: Qt.AlignVCenter
                     }
                 }
             }
@@ -903,11 +1140,18 @@ ColumnLayout {
 
             property string selectedType: "carbs"
             property int valueFontSize: Math.round(Kirigami.Units.gridUnit * 0.7)
+            property var availableTypes: Treatments.getTypes(root.rapidName, root.basalName, root.showBasal)
 
-            // Hardcoded treatment type list replaced with the single source
-            // of truth in lib/treatments.js so colors/labels cannot drift.
+            function updateAvailableTypes() {
+                availableTypes = Treatments.getTypes(root.rapidName, root.basalName, root.showBasal);
+                if (!root.showBasal && selectedType === "tresiba") {
+                    selectedType = "carbs";
+                }
+            }
+
+            // Cycle through available treatment types
             function cycleType(direction) {
-                var types = Treatments.TYPES.map(function (t) { return t.key; });
+                var types = availableTypes.map(function (t) { return t.key; });
                 var idx = types.indexOf(selectedType);
                 if (idx < 0) idx = 0;
                 idx = (idx + direction + types.length) % types.length;
@@ -917,12 +1161,20 @@ ColumnLayout {
             Component.onCompleted: {
                 var initial = root.lastSelectedType;
                 if (initial === "humalog") initial = "admelog";
+                if (!root.showBasal && initial === "tresiba") initial = "carbs";
                 selectedType = initial;
             }
 
             onSelectedTypeChanged: {
                 root.lastSelectedType = selectedType;
                 Qt.callLater(function() { valueInput.forceActiveFocus(); });
+            }
+
+            Connections {
+                target: root
+                function onShowBasalChanged() { treatmentBar.updateAvailableTypes(); }
+                function onRapidNameChanged() { treatmentBar.updateAvailableTypes(); }
+                function onBasalNameChanged() { treatmentBar.updateAvailableTypes(); }
             }
 
             Rectangle {
@@ -949,7 +1201,7 @@ ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
 
                 Repeater {
-                    model: Treatments.TYPES
+                    model: treatmentBar.availableTypes
 
                     delegate: Button {
                         id: typeBtn
@@ -964,6 +1216,7 @@ ColumnLayout {
                         rightPadding: 12
                         topPadding: 8
                         bottomPadding: 8
+                        hoverEnabled: true
 
                         readonly property color accentColor: modelData.accent
 
@@ -972,13 +1225,23 @@ ColumnLayout {
 
                         background: Rectangle {
                             color: typeBtn.checked ? typeBtn.accentColor
-                                  : typeBtn.down ? Qt.rgba(1, 1, 1, 0.12)
+                                  : typeBtn.down ? Qt.rgba(1, 1, 1, 0.14)
+                                  : typeBtn.hovered ? Qt.rgba(1, 1, 1, 0.08)
                                   : Qt.rgba(1, 1, 1, 0.04)
-                            border.color: typeBtn.checked ? "transparent" : typeBtn.accentColor
+                            border.color: typeBtn.checked ? "transparent"
+                                          : (typeBtn.hovered ? Qt.lighter(typeBtn.accentColor, 1.15) : typeBtn.accentColor)
                             border.width: typeBtn.checked ? 0 : 1
                             radius: 8
                             Behavior on color { ColorAnimation { duration: 120 } }
+                            Behavior on border.color { ColorAnimation { duration: 120 } }
                         }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            acceptedButtons: Qt.NoButton
+                        }
+
                         contentItem: Text {
                             text: typeBtn.text
                             color: typeBtn.checked ? "white" : typeBtn.accentColor
@@ -1041,15 +1304,25 @@ ColumnLayout {
                     Layout.fillHeight: true
                     leftPadding: 14
                     rightPadding: 14
+                    hoverEnabled: true
 
-                    readonly property color typeColor: Treatments.typeByKey(treatmentBar.selectedType).accent
+                    readonly property color typeColor: Treatments.typeByKey(treatmentBar.selectedType, root.rapidName, root.basalName).accent
 
                     background: Rectangle {
                         radius: 8
                         opacity: addBtn.enabled ? 1.0 : 0.4
-                        color: addBtn.enabled ? addBtn.typeColor : Kirigami.Theme.disabledTextColor
+                        color: !addBtn.enabled ? Kirigami.Theme.disabledTextColor
+                                : (addBtn.down ? Qt.darker(addBtn.typeColor, 1.15)
+                                   : (addBtn.hovered ? Qt.lighter(addBtn.typeColor, 1.12) : addBtn.typeColor))
                         Behavior on color { ColorAnimation { duration: 150 } }
                     }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        acceptedButtons: Qt.NoButton
+                    }
+
                     contentItem: Text {
                         text: addBtn.text
                         color: "white"
@@ -1095,7 +1368,7 @@ ColumnLayout {
                         }
 
                         var url = Api.postTreatmentUrl(root.sanitizedNightscoutURL, root.nightscoutToken);
-                        var payload = Treatments.buildPayload(treatmentBar.selectedType, value, dateObj);
+                        var payload = Treatments.buildPayload(treatmentBar.selectedType, value, dateObj, root.rapidName, root.basalName);
 
                         Api.post(url, payload, function (response) {
                             addBtn.isSubmitting = false;

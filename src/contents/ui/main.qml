@@ -22,7 +22,7 @@ PlasmoidItem {
             parts.push(isStale ? qsTr("Stale (%1)").arg(timeAgo) : timeAgo);
         }
         if (status === "ok") {
-            parts.push(Units.isInGreenRange(glucoseValue, units) ? qsTr("In Target Range") : qsTr("Out of Target Range"));
+            parts.push(Units.isInGreenRange(glucoseValue, units, targetLow, targetHigh) ? qsTr("In Target Range") : qsTr("Out of Target Range"));
         } else if (status === "offline") {
             parts.push(qsTr("Offline — retrying"));
         } else if (status === "error") {
@@ -39,6 +39,14 @@ PlasmoidItem {
     property real chartMin: Plasmoid.configuration.chartMin
     property real chartMax: Plasmoid.configuration.chartMax
     property string lastSelectedType: Plasmoid.configuration.lastSelectedType
+    property real urgentLow: Plasmoid.configuration.urgentLow
+    property real targetLow: Plasmoid.configuration.targetLow
+    property real targetHigh: Plasmoid.configuration.targetHigh
+    property real urgentHigh: Plasmoid.configuration.urgentHigh
+    property int chartHours: Plasmoid.configuration.chartHours
+    property string rapidName: Plasmoid.configuration.rapidName
+    property string basalName: Plasmoid.configuration.basalName
+    property bool showBasal: Plasmoid.configuration.showBasal
 
     property real usedChartMin: 0
     property real usedChartMax: 0
@@ -90,12 +98,35 @@ PlasmoidItem {
             configChanged();
             return;
         }
-        var newMin = Units.convertBound(chartMin, fromUnit, toUnit);
-        var newMax = Units.convertBound(chartMax, fromUnit, toUnit);
-        Plasmoid.configuration.chartMin = newMin;
-        Plasmoid.configuration.chartMax = newMax;
-        chartMin = newMin;
-        chartMax = newMax;
+        // Only convert if chartMax is still scaled in the old unit.
+        // If configGeneral already converted it, avoid double-converting!
+        var needsConvert = false;
+        if (fromUnit === Units.Unit.MMOL_L && toUnit === Units.Unit.MG_DL) {
+            needsConvert = chartMax > 0 && chartMax < 40;
+        } else if (fromUnit === Units.Unit.MG_DL && toUnit === Units.Unit.MMOL_L) {
+            needsConvert = chartMax > 70;
+        }
+        if (needsConvert) {
+            let newMin = Units.convertBound(chartMin, fromUnit, toUnit);
+            let newMax = Units.convertBound(chartMax, fromUnit, toUnit);
+            Plasmoid.configuration.chartMin = newMin;
+            Plasmoid.configuration.chartMax = newMax;
+            chartMin = newMin;
+            chartMax = newMax;
+
+            let newUrgentLow = Units.convertBound(urgentLow, fromUnit, toUnit);
+            let newTargetLow = Units.convertBound(targetLow, fromUnit, toUnit);
+            let newTargetHigh = Units.convertBound(targetHigh, fromUnit, toUnit);
+            let newUrgentHigh = Units.convertBound(urgentHigh, fromUnit, toUnit);
+            Plasmoid.configuration.urgentLow = newUrgentLow;
+            Plasmoid.configuration.targetLow = newTargetLow;
+            Plasmoid.configuration.targetHigh = newTargetHigh;
+            Plasmoid.configuration.urgentHigh = newUrgentHigh;
+            urgentLow = newUrgentLow;
+            targetLow = newTargetLow;
+            targetHigh = newTargetHigh;
+            urgentHigh = newUrgentHigh;
+        }
         configChanged();
     }
 
@@ -109,6 +140,14 @@ PlasmoidItem {
     onChartMaxChanged: configChanged()
     onPollPaddingChanged: configChanged()
     onLastSelectedTypeChanged: Plasmoid.configuration.lastSelectedType = lastSelectedType
+    onUrgentLowChanged: configChanged()
+    onTargetLowChanged: configChanged()
+    onTargetHighChanged: configChanged()
+    onUrgentHighChanged: configChanged()
+    onChartHoursChanged: reloadChart()
+    onRapidNameChanged: Plasmoid.configuration.rapidName = rapidName
+    onBasalNameChanged: Plasmoid.configuration.basalName = basalName
+    onShowBasalChanged: Plasmoid.configuration.showBasal = showBasal
 
     // Capture the last-seen unit so onUnitsChanged can convert chart bounds
     // from the previous unit to the new one and persist the converted value.
@@ -196,6 +235,33 @@ PlasmoidItem {
     function updateChartBounds() {
         usedChartMin = Units.roundChartBound(chartMin);
         usedChartMax = Units.roundChartBound(chartMax);
+        // Defensive check: if units is mg/dL but stored max is in mmol/L scale (< 35)
+        if (units === Units.Unit.MG_DL && usedChartMax > 0 && usedChartMax < 35) {
+            usedChartMax = Math.round(usedChartMax * 18);
+        } else if (units === Units.Unit.MMOL_L && usedChartMax > 70) {
+            usedChartMax = parseFloat((usedChartMax / 18).toFixed(1));
+        }
+
+        // Defensive checks for thresholds:
+        if (units === Units.Unit.MG_DL && urgentHigh > 0 && urgentHigh < 35) {
+            urgentLow = Math.round(urgentLow * 18);
+            targetLow = Math.round(targetLow * 18);
+            targetHigh = Math.round(targetHigh * 18);
+            urgentHigh = Math.round(urgentHigh * 18);
+            Plasmoid.configuration.urgentLow = urgentLow;
+            Plasmoid.configuration.targetLow = targetLow;
+            Plasmoid.configuration.targetHigh = targetHigh;
+            Plasmoid.configuration.urgentHigh = urgentHigh;
+        } else if (units === Units.Unit.MMOL_L && urgentLow > 40) {
+            urgentLow = parseFloat((urgentLow / 18).toFixed(1));
+            targetLow = parseFloat((targetLow / 18).toFixed(1));
+            targetHigh = parseFloat((targetHigh / 18).toFixed(1));
+            urgentHigh = parseFloat((urgentHigh / 18).toFixed(1));
+            Plasmoid.configuration.urgentLow = urgentLow;
+            Plasmoid.configuration.targetLow = targetLow;
+            Plasmoid.configuration.targetHigh = targetHigh;
+            Plasmoid.configuration.urgentHigh = urgentHigh;
+        }
     }
 
     // Refresh only chart and treatments data, without updating glucose/value/
@@ -206,13 +272,18 @@ PlasmoidItem {
         fetchChartAndTreatments();
     }
 
-    // Fetch 3 hours of entries + treatments. Shared between readData() and
-    // reloadChart() so the URL construction and parsing can never drift.
+    // Fetch entries + treatments for the configured timeframe. Shared between
+    // readData() and reloadChart() so the URL construction and parsing never drift.
     function fetchChartAndTreatments() {
         updateChartBounds();
 
-        var sinceDate = Date.now() - Const.CHART_HISTORY_MS;
-        Api.request(Api.entriesUrl(sanitizedNightscoutURL, nightscoutToken, sinceDate, Const.CHART_ENTRY_COUNT), function (response) {
+        var hours = (chartHours > 0) ? chartHours : 3;
+        var historyMs = hours * 3600000;
+        var entryCount = Math.max(100, hours * 30);
+        var labelStride = Math.max(4, Math.round(hours * 2));
+        var sinceDate = Date.now() - historyMs;
+
+        Api.request(Api.entriesUrl(sanitizedNightscoutURL, nightscoutToken, sinceDate, entryCount), function (response) {
             try {
                 if (response.status == 200 && response.content) {
                     let j = response.content;
@@ -230,7 +301,7 @@ PlasmoidItem {
                         let date = new Date(entry.date);
                         tsArray.push(entry.date);
                         let paddedMinute = Format.pad2(date.getMinutes());
-                        if (i++ % Const.LABEL_EVERY_N == 0) {
+                        if (i++ % labelStride == 0) {
                             let paddedHour = Format.pad2(date.getHours());
                             labelArray.push(paddedHour + ":" + paddedMinute);
                         } else {
@@ -280,7 +351,7 @@ PlasmoidItem {
             }
         });
 
-        var sinceTs = Date.now() - Const.CHART_HISTORY_MS;
+        var sinceTs = Date.now() - historyMs;
         Api.request(Api.treatmentsUrl(sanitizedNightscoutURL, nightscoutToken, sinceTs), function (response) {
             try {
                 if (response.status == 200 && response.content) {
@@ -322,7 +393,7 @@ PlasmoidItem {
                     }
                     glucoseValue = Units.convertValue(sgv, apiUnit, units);
                     glucose = units === Units.Unit.MMOL_L ? glucoseValue.toFixed(1) : String(glucoseValue);
-                    glucoseColor = Units.getGlucoseColor(glucoseValue, units);
+                    glucoseColor = Units.getGlucoseColor(glucoseValue, units, root.urgentLow, root.targetLow, root.targetHigh, root.urgentHigh);
                     lastTimestamp = bgs.datetime;
 
                     if (bgs.bgdelta !== undefined && bgs.bgdelta !== null) {

@@ -26,7 +26,7 @@ function defaultAbsorptionMinutes(carbs) {
 
 // ---- Type descriptors --------------------------------------------------
 
-// The three treatment kinds exposed by the widget UI.
+// Default treatment kinds exposed by the widget UI.
 var TYPES = [
     {
         key: "carbs",
@@ -55,20 +55,81 @@ var TYPES = [
     }
 ];
 
-// Look up a type descriptor by key. Maps legacy "humalog" key to "admelog".
-// Returns the carbs descriptor on miss so the UI always has something sensible.
-function typeByKey(key) {
-    if (key === "humalog") key = "admelog";
-    for (var i = 0; i < TYPES.length; i++) {
-        if (TYPES[i].key === key) return TYPES[i];
+// Return available types taking custom names and basal button visibility into account.
+function getTypes(rapidName, basalName, showBasal) {
+    var rName = (rapidName && rapidName.trim()) ? rapidName.trim() : "Admelog";
+    var bName = (basalName && basalName.trim()) ? basalName.trim() : "Tresiba";
+    var list = [
+        {
+            key: "carbs",
+            label: "Carbs",
+            accent: "#f97316"
+        },
+        {
+            key: "admelog",
+            label: rName,
+            accent: "#ec4899",
+            insulin: rName,
+            isBasal: false,
+            notes: "Rapid-Acting",
+            onsetMinutes: 21,
+            durationMinutes: 330
+        }
+    ];
+    if (showBasal !== false) {
+        list.push({
+            key: "tresiba",
+            label: bName,
+            accent: "#3b82f6",
+            insulin: bName,
+            isBasal: true,
+            notes: "Long-Acting",
+            onsetMinutes: 0,
+            durationMinutes: 2520
+        });
+    }
+    return list;
+}
+
+// Look up a type descriptor by key. Maps legacy "humalog" and "rapid" keys to "admelog",
+// and "basal" to "tresiba". Returns the carbs descriptor on miss so the UI always has something sensible.
+function typeByKey(key, rapidName, basalName) {
+    if (key === "humalog" || key === "rapid") key = "admelog";
+    if (key === "basal") key = "tresiba";
+    var rName = (rapidName && rapidName.trim()) ? rapidName.trim() : "Admelog";
+    var bName = (basalName && basalName.trim()) ? basalName.trim() : "Tresiba";
+
+    if (key === "admelog") {
+        return {
+            key: "admelog",
+            label: rName,
+            accent: "#ec4899",
+            insulin: rName,
+            isBasal: false,
+            notes: "Rapid-Acting",
+            onsetMinutes: 21,
+            durationMinutes: 330
+        };
+    }
+    if (key === "tresiba") {
+        return {
+            key: "tresiba",
+            label: bName,
+            accent: "#3b82f6",
+            insulin: bName,
+            isBasal: true,
+            notes: "Long-Acting",
+            onsetMinutes: 0,
+            durationMinutes: 2520
+        };
     }
     return TYPES[0];
 }
 
 // Build the POST body for a new treatment in JugglucoNG-compatible format.
 // `dateObj` is a JavaScript Date object set to the desired treatment time.
-function buildPayload(typeKey, value, dateObj) {
-    var t = typeByKey(typeKey);
+function buildPayload(typeKey, value, dateObj, rapidName, basalName) {
+    var t = typeByKey(typeKey, rapidName, basalName);
     var isCarbs = t.key === "carbs";
     var ts = dateObj.getTime();
     var id = generateTreatmentId(dateObj);
@@ -116,13 +177,17 @@ function buildPayload(typeKey, value, dateObj) {
 
 // Helper to decide if an insulin record represents rapid-acting insulin.
 // Recognizes JugglucoNG (isBasalInsulin: false, notes "Rapid-Acting", insulinType "Admelog"),
-// legacy Humalog records (insulinInjections with Humalog), and common rapid insulin names.
-function isRapidInsulin(t) {
+// legacy Humalog records (insulinInjections with Humalog), configured custom rapid name,
+// and common rapid insulin names.
+function isRapidInsulin(t, rapidName) {
     if (t.isBasalInsulin === true) return false;
     if (t.isBasalInsulin === false) return true;
 
     // Check insulinType and journalTitle
     var typeStr = (t.insulinType || t.journalTitle || "").toLowerCase();
+    if (rapidName && rapidName.trim() && typeStr.indexOf(rapidName.trim().toLowerCase()) !== -1) {
+        return true;
+    }
     if (/admelog|humalog|lispro|novolog|novorapid|aspart|fiasp|lyumjev|apidra|glulisine|afrezza/.test(typeStr)) {
         return true;
     }
@@ -143,6 +208,9 @@ function isRapidInsulin(t) {
     }
     if (Array.isArray(injections) && injections.length > 0 && injections[0] && injections[0].insulin) {
         var injName = String(injections[0].insulin).toLowerCase();
+        if (rapidName && rapidName.trim() && injName.indexOf(rapidName.trim().toLowerCase()) !== -1) {
+            return true;
+        }
         if (/admelog|humalog|lispro|novolog|novorapid|aspart|fiasp|lyumjev|apidra|glulisine|afrezza/.test(injName)) {
             return true;
         }
@@ -154,12 +222,12 @@ function isRapidInsulin(t) {
 // Decide on a display color for an existing treatment record. Order matters:
 // mixed carbs+insulin gets purple; carbs-only orange; rapid-acting insulin pink;
 // other insulin (e.g. Tresiba / basal) blue; fallback neutral gray.
-function colorFor(t) {
+function colorFor(t, rapidName) {
     if (t.carbs) {
         if (t.insulin) return "#8e44ad";
         return "#f97316";
     }
-    if (isRapidInsulin(t)) {
+    if (isRapidInsulin(t, rapidName)) {
         return "#ec4899";
     }
     if (t.insulin) {
@@ -190,6 +258,13 @@ function timestampFor(t) {
     if (t.date) return t.date;
     if (t.created_at) return new Date(t.created_at).getTime();
     return 0;
+}
+
+// Extract a unique identifier from a treatment record for deletion or selection.
+// Tolerates `_id` (standard Nightscout/MongoDB), `identifier` (xDrip/JugglucoNG), or `id`.
+function idFor(t) {
+    if (!t) return "";
+    return t._id || t.identifier || t.id || "";
 }
 
 // Map a treatment timestamp onto a fractional entry index.

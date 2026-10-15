@@ -31,5 +31,29 @@
         <entry name="lastSelectedType" type="String">
             <default>carbs</default>
         </entry>
+        <entry name="urgentLow" type="Double">
+            <default>3.9</default>
+        </entry>
+        <entry name="targetLow" type="Double">
+            <default>4.5</default>
+        </entry>
+        <entry name="targetHigh" type="Double">
+            <default>10.0</default>
+        </entry>
+        <entry name="urgentHigh" type="Double">
+            <default>13.4</default>
+        </entry>
+        <entry name="chartHours" type="Int">
+            <default>3</default>
+        </entry>
+        <entry name="rapidName" type="String">
+            <default>Admelog</default>
+        </entry>
+        <entry name="basalName" type="String">
+            <default>Tresiba</default>
+        </entry>
+        <entry name="showBasal" type="Bool">
+            <default>true</default>
+        </entry>
     </group>
 </kcfg>

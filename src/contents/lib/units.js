@@ -59,13 +59,23 @@ function convertBound(value, fromUnit, toUnit) {
     return value;
 }
 
-function getGlucoseColor(value, unit) {
+function getGlucoseColor(value, unit, urgentLow, targetLow, targetHigh, urgentHigh) {
+    var hasCustom = (typeof urgentLow === "number" && !isNaN(urgentLow) && urgentLow > 0 &&
+                     typeof targetLow === "number" && !isNaN(targetLow) && targetLow > 0 &&
+                     typeof targetHigh === "number" && !isNaN(targetHigh) && targetHigh > 0 &&
+                     typeof urgentHigh === "number" && !isNaN(urgentHigh) && urgentHigh > 0);
+
     // Thresholds in mmol/L: <3.9 red, <4.5 yellow, >10 yellow, >13.4 red, else green
     var tRedLow = 3.9;
     var tYellowLow = 4.5;
     var tYellowHigh = 10;
     var tRedHigh = 13.4;
-    if (unit == Unit.MG_DL) {
+    if (hasCustom) {
+        tRedLow = urgentLow;
+        tYellowLow = targetLow;
+        tYellowHigh = targetHigh;
+        tRedHigh = urgentHigh;
+    } else if (unit == Unit.MG_DL) {
         tRedLow = Math.round(tRedLow * 18);
         tYellowLow = Math.round(tYellowLow * 18);
         tYellowHigh = Math.round(tYellowHigh * 18);
@@ -80,9 +90,17 @@ function getGlucoseColor(value, unit) {
 
 // Predicate version of getGlucoseColor's green case. Avoids the brittle
 // string-compare on color hex that previously lived in FullRepresentation.qml.
-function isInGreenRange(value, unit) {
-    var tYellowLow = unit == Unit.MMOL_L ? 4.5 : Math.round(4.5 * 18);
-    var tYellowHigh = unit == Unit.MMOL_L ? 10 : Math.round(10 * 18);
+function isInGreenRange(value, unit, targetLow, targetHigh) {
+    var tYellowLow;
+    var tYellowHigh;
+    if (typeof targetLow === "number" && !isNaN(targetLow) && targetLow > 0 &&
+        typeof targetHigh === "number" && !isNaN(targetHigh) && targetHigh > 0) {
+        tYellowLow = targetLow;
+        tYellowHigh = targetHigh;
+    } else {
+        tYellowLow = unit == Unit.MMOL_L ? 4.5 : Math.round(4.5 * 18);
+        tYellowHigh = unit == Unit.MMOL_L ? 10 : Math.round(10 * 18);
+    }
     return value > tYellowLow && value < tYellowHigh;
 }
 

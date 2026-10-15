@@ -114,4 +114,29 @@ TestCase {
         compare(Units.getUnitText(Units.Unit.MG_DL),  "mg/dl");
         compare(Units.getUnitText(Units.Unit.MMOL_L), "mmol/l");
     }
+
+    function test_getGlucoseColor_customThresholds_mmol() {
+        // Custom thresholds: urgentLow 3.5, targetLow 4.0, targetHigh 8.5, urgentHigh 11.0
+        compare(Units.getGlucoseColor(3.4, Units.Unit.MMOL_L, 3.5, 4.0, 8.5, 11.0), "#ef4444");
+        compare(Units.getGlucoseColor(3.8, Units.Unit.MMOL_L, 3.5, 4.0, 8.5, 11.0), "#f59e0b");
+        compare(Units.getGlucoseColor(6.0, Units.Unit.MMOL_L, 3.5, 4.0, 8.5, 11.0), "#00c950");
+        compare(Units.getGlucoseColor(9.0, Units.Unit.MMOL_L, 3.5, 4.0, 8.5, 11.0), "#f59e0b");
+        compare(Units.getGlucoseColor(11.5, Units.Unit.MMOL_L, 3.5, 4.0, 8.5, 11.0), "#ef4444");
+    }
+
+    function test_getGlucoseColor_customThresholds_mgdl() {
+        // Custom thresholds: urgentLow 65, targetLow 75, targetHigh 160, urgentHigh 210
+        compare(Units.getGlucoseColor(60, Units.Unit.MG_DL, 65, 75, 160, 210), "#ef4444");
+        compare(Units.getGlucoseColor(70, Units.Unit.MG_DL, 65, 75, 160, 210), "#f59e0b");
+        compare(Units.getGlucoseColor(120, Units.Unit.MG_DL, 65, 75, 160, 210), "#00c950");
+        compare(Units.getGlucoseColor(170, Units.Unit.MG_DL, 65, 75, 160, 210), "#f59e0b");
+        compare(Units.getGlucoseColor(220, Units.Unit.MG_DL, 65, 75, 160, 210), "#ef4444");
+    }
+
+    function test_isInGreenRange_customThresholds() {
+        // Custom target range 4.0 to 8.5
+        verify(Units.isInGreenRange(5.0, Units.Unit.MMOL_L, 4.0, 8.5));
+        verify(!Units.isInGreenRange(3.9, Units.Unit.MMOL_L, 4.0, 8.5));
+        verify(!Units.isInGreenRange(8.6, Units.Unit.MMOL_L, 4.0, 8.5));
+    }
 }
