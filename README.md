@@ -5,17 +5,18 @@ Plasma 6 widget made to read BG and enter treatments to Nightscout's [API](https
 The plasmoid supports both: a compact and a full mode.
 
 * The compact representation targets panels and shows the last reading with optional units (configurable) and the trend arrow (1).
-* The full representation shows a chart with readings and treatments of the last three hours in addition to the last reading and trend arrow (2).
-* Treatment entry bar allows quickly adding treatments directly to Nightscout:
+* The full representation shows a chart with readings and treatments over an adjustable timeframe (3h, 6h, 12h, or 24h) in addition to the last reading and trend arrow (2).
+* Treatment entry bar allows quickly adding and deleting treatments directly with Nightscout:
   * **Carbs** (Meal Bolus / Carb Correction with calculated absorption time)
-  * **Admelog** (rapid-acting insulin bolus)
-  * **Tresiba** (long-acting basal insulin)
+  * **Rapid-acting insulin** (customizable name, e.g. Admelog, Humalog, Novolog, Fiasp)
+  * **Basal insulin** (customizable name, e.g. Tresiba, Lantus, Toujeo; can be hidden for pump/loop users)
+* Interactive chart: hover inspection tooltip and click-to-select treatments with inline confirmation to delete.
 
 ![Overview](img/overview.png)
 
 ## Usage
 
-* Download the `.plasmoid` from the [GitHub releases](https://github.com/woernsn/nightscout-widget-kde/releases) or from the [KDE store](https://www.pling.com/p/2302770/).
+* Download the `.plasmoid` from the [GitHub releases](https://github.com/imjustarandomguy/nightscout-widget-kde/releases) or from the [KDE Store](https://www.pling.com/p/2302770/).
 * Configure the widget when added.
 * If using the compact representation, click it to extend it to the chart view.
 
@@ -25,13 +26,11 @@ The plasmoid supports both: a compact and a full mode.
 
 Use the KDE widget configuration to configure:
 
-* the Nightscout server URL
-* the Nightscout API token
-* the charset for trend arrows
-* the poll padding of the widget
-* the units to be used (mg/dL or mmol/L)
-* the minimum of the chart range (glucose level)
-* the maximum of the chart range (glucose level)
+* **Nightscout Connection**: Server URL, API token, trend arrow charset, poll padding.
+* **Units & Targets**: Display units (`mg/dL` or `mmol/L`) with automatic unit conversion across all bounds.
+* **Chart**: Adjustable timeframe (`3 hours`, `6 hours`, `12 hours`, `24 hours`), minimum and maximum chart range.
+* **Target & Alert Thresholds**: Urgent Low, Target Low, Target High, Urgent High (customizes chart target band and reading color alerts).
+* **Treatments**: Custom rapid-acting insulin name, custom basal insulin name, and toggle to show or hide the basal button.
 
 > [!NOTE]  
 > If a value in the chart is higher than the "Chart Maximum" value or lower than the "Chart Minimum" value, the chart will scale automatically and ignore the set values!
@@ -77,4 +76,10 @@ plasmawindowed org.kde.plasma.nightscoutwidget
 for f in src/contents/lib/test/tst_*.qml; do
     QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input "$f"
 done
+```
+
+### Packaging for Release (.plasmoid)
+To create a `.plasmoid` archive for GitHub Releases or uploading to the KDE Store (Pling):
+```bash
+cd src && zip -r ../nightscout-widget.plasmoid ./* -x "contents/lib/test/*"
 ```
