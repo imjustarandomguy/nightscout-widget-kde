@@ -104,3 +104,17 @@ function postTreatmentUrl(base, token) {
     var query = token ? "?token=" + encodeURIComponent(token) : "";
     return base + "/api/v1/treatments/" + query;
 }
+
+// DELETE <url>, callback(envelope).
+function del(url, token, callback, timeoutMs) {
+    var headers = {};
+    if (token) {
+        headers["api-secret"] = token;
+    }
+    xhr("DELETE", url, null, headers, timeoutMs || 15000, callback);
+}
+
+function deleteTreatmentUrl(base, token, id) {
+    var query = token ? "?token=" + encodeURIComponent(token) : "";
+    return base + "/api/v1/treatments/" + encodeURIComponent(id) + query;
+}
