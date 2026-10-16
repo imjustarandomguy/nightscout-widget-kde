@@ -51,6 +51,26 @@ KCMUtils.SimpleKCM {
     }
 
     Component.onCompleted: {
+        let comp = Qt.createComponent(Qt.resolvedUrl("LocalConfig.qml"));
+        if (comp.status === Component.Ready) {
+            let local = comp.createObject(page);
+            if (local) {
+                if (local.nightscoutURL) {
+                    if (nightscoutURL.text === page.cfg_nightscoutURLDefault || nightscoutURL.text === "") {
+                        nightscoutURL.text = local.nightscoutURL;
+                    }
+                    page.cfg_nightscoutURLDefault = local.nightscoutURL;
+                }
+                if (local.nightscoutToken) {
+                    if (nightscoutToken.text === page.cfg_nightscoutTokenDefault || nightscoutToken.text === "") {
+                        nightscoutToken.text = local.nightscoutToken;
+                    }
+                    page.cfg_nightscoutTokenDefault = local.nightscoutToken;
+                }
+                local.destroy();
+            }
+        }
+
         page._activeUnit = units.currentIndex;
         // Defensive: if unit is mg/dL but stored values are in mmol/L scale (< 35),
         // auto-convert so the settings UI shows realistic mg/dL numbers.

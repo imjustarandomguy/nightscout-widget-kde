@@ -1,0 +1,2 @@
+*.plasmoid
+src/contents/ui/LocalConfig.qml

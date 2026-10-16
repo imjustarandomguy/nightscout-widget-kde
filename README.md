@@ -81,5 +81,5 @@ done
 ### Packaging for Release (.plasmoid)
 To create a `.plasmoid` archive for GitHub Releases or uploading to the KDE Store (Pling):
 ```bash
-cd src && zip -r ../nightscout-widget.plasmoid ./* -x "contents/lib/test/*"
+cd src && zip -r ../nightscout-widget.plasmoid ./* -x "contents/lib/test/*" "contents/ui/LocalConfig.qml"
 ```

@@ -89,6 +89,26 @@ PlasmoidItem {
         }
     }
 
+    Component.onCompleted: {
+        if (Utils.isConfigDefault(nightscoutURL, nightscoutToken)) {
+            let comp = Qt.createComponent(Qt.resolvedUrl("LocalConfig.qml"));
+            if (comp.status === Component.Ready) {
+                let local = comp.createObject(root);
+                if (local) {
+                    if (local.nightscoutURL) {
+                        Plasmoid.configuration.nightscoutURL = local.nightscoutURL;
+                        nightscoutURL = local.nightscoutURL;
+                    }
+                    if (local.nightscoutToken) {
+                        Plasmoid.configuration.nightscoutToken = local.nightscoutToken;
+                        nightscoutToken = local.nightscoutToken;
+                    }
+                    local.destroy();
+                }
+            }
+        }
+    }
+
     // When the display unit changes, convert the stored chart bounds so the
     // chart keeps showing a sensible range in the new unit. The converted
     // bounds are persisted back to the config so a downgrade round-trip is
