@@ -16,7 +16,7 @@ The plasmoid supports both: a compact and a full mode.
 
 ## Usage
 
-* Download the `.plasmoid` from the [GitHub releases](https://github.com/imjustarandomguy/nightscout-widget-kde/releases) or from the [KDE Store](https://www.pling.com/p/2302770/).
+* Download the `.plasmoid` from the [GitHub releases](https://github.com/imjustarandomguy/nightscout-widget-kde/releases) or from the [KDE Store](https://store.kde.org/p/2379197/).
 * Configure the widget when added.
 * If using the compact representation, click it to extend it to the chart view.
 
