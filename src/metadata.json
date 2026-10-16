@@ -18,6 +18,7 @@
         "Description": "Shows your blood glucose and treatments from Nightscout as a KDE Plasma 6 widget.",
         "Icon": "applications-other",
         "Id": "org.kde.plasma.nightscoutwidget",
+        "License": "GPL-3.0",
         "Name": "Nightscout Widget",
         "Version": "2.4.0",
         "Website": "https://github.com/imjustarandomguy/nightscout-widget-kde",

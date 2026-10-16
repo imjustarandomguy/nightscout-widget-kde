@@ -1380,7 +1380,7 @@ ColumnLayout {
                             } else {
                                 console.warn("nightscout: treatment POST failed:", response.status, response.error);
                             }
-                        });
+                        }, undefined, root.nightscoutToken);
                     }
                 }
             }

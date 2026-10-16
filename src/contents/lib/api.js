@@ -72,9 +72,12 @@ function request(url, callback, timeoutMs) {
 }
 
 // POST <url> with JSON body, callback(envelope).
-function post(url, body, callback, timeoutMs) {
+function post(url, body, callback, timeoutMs, token) {
     var bodyStr = JSON.stringify(body);
     var headers = { "Content-Type": "application/json" };
+    if (token) {
+        headers["api-secret"] = token;
+    }
     xhr("POST", url, bodyStr, headers, timeoutMs || 15000, callback);
 }
 

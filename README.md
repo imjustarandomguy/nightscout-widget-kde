@@ -4,8 +4,8 @@ Plasma 6 widget made to read BG and enter treatments to Nightscout's [API](https
 
 The plasmoid supports both: a compact and a full mode.
 
-* The compact representation targets panels and shows the last reading with optional units (configurable) and the trend arrow (1).
-* The full representation shows a chart with readings and treatments over an adjustable timeframe (3h, 6h, 12h, or 24h) in addition to the last reading and trend arrow (2).
+* The compact representation targets panels and shows a circular poll progress ring, the last reading, and the trend arrow.
+* The full representation shows a chart with readings and treatments over an adjustable timeframe (3h, 6h, 12h, or 24h) in addition to the last reading, delta badge, and trend arrow.
 * Treatment entry bar allows quickly adding and deleting treatments directly with Nightscout:
   * **Carbs** (Meal Bolus / Carb Correction with calculated absorption time)
   * **Rapid-acting insulin** (customizable name, e.g. Admelog, Humalog, Novolog, Fiasp)
