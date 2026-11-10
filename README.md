@@ -83,3 +83,8 @@ To create a `.plasmoid` archive for GitHub Releases or uploading to the KDE Stor
 ```bash
 cd src && zip -r ../nightscout-widget.plasmoid ./* -x "contents/lib/test/*" "contents/ui/LocalConfig.qml"
 ```
+
+## Credits
+
+This project is based on [woernsn/nightscout-widget-kde](https://github.com/woernsn/nightscout-widget-kde) by [@woernsn](https://github.com/woernsn) (which originally built upon [cominixo01/nightscout-widget-kde](https://github.com/cominixo01/nightscout-widget-kde) by [@cominixo01](https://github.com/cominixo01)).
+
