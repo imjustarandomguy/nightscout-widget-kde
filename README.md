@@ -31,6 +31,7 @@ Use the KDE widget configuration to configure:
 * **Chart**: Adjustable timeframe (`3 hours`, `6 hours`, `12 hours`, `24 hours`), minimum and maximum chart range.
 * **Target & Alert Thresholds**: Urgent Low, Target Low, Target High, Urgent High (customizes chart target band and reading color alerts).
 * **Treatments**: Custom rapid-acting insulin name, custom basal insulin name, and toggle to show or hide the basal button.
+* **Appearance (Panel/Compact Representation)**: Customize font size (automatic or custom pt), font weight (bold toggle), trend arrow size (match text or custom pt), poll countdown ring (visibility, automatic or custom px), spacing between items, and panel horizontal margins.
 
 > [!NOTE]  
 > If a value in the chart is higher than the "Chart Maximum" value or lower than the "Chart Minimum" value, the chart will scale automatically and ignore the set values!

@@ -47,6 +47,16 @@ PlasmoidItem {
     property string rapidName: Plasmoid.configuration.rapidName
     property string basalName: Plasmoid.configuration.basalName
     property bool showBasal: Plasmoid.configuration.showBasal
+    property bool showPollRing: Plasmoid.configuration.showPollRing
+    property bool autoRingSize: Plasmoid.configuration.autoRingSize
+    property int customRingSize: Plasmoid.configuration.customRingSize
+    property bool autoFontSize: Plasmoid.configuration.autoFontSize
+    property int customFontSize: Plasmoid.configuration.customFontSize
+    property bool boldText: Plasmoid.configuration.boldText
+    property bool matchTrendSize: Plasmoid.configuration.matchTrendSize
+    property int customTrendSize: Plasmoid.configuration.customTrendSize
+    property int itemSpacing: Plasmoid.configuration.itemSpacing
+    property int horizontalMargin: Plasmoid.configuration.horizontalMargin
 
     property real usedChartMin: 0
     property real usedChartMax: 0
@@ -168,6 +178,16 @@ PlasmoidItem {
     onRapidNameChanged: Plasmoid.configuration.rapidName = rapidName
     onBasalNameChanged: Plasmoid.configuration.basalName = basalName
     onShowBasalChanged: Plasmoid.configuration.showBasal = showBasal
+    onShowPollRingChanged: Plasmoid.configuration.showPollRing = showPollRing
+    onAutoRingSizeChanged: Plasmoid.configuration.autoRingSize = autoRingSize
+    onCustomRingSizeChanged: Plasmoid.configuration.customRingSize = customRingSize
+    onAutoFontSizeChanged: Plasmoid.configuration.autoFontSize = autoFontSize
+    onCustomFontSizeChanged: Plasmoid.configuration.customFontSize = customFontSize
+    onBoldTextChanged: Plasmoid.configuration.boldText = boldText
+    onMatchTrendSizeChanged: Plasmoid.configuration.matchTrendSize = matchTrendSize
+    onCustomTrendSizeChanged: Plasmoid.configuration.customTrendSize = customTrendSize
+    onItemSpacingChanged: Plasmoid.configuration.itemSpacing = itemSpacing
+    onHorizontalMarginChanged: Plasmoid.configuration.horizontalMargin = horizontalMargin
 
     // Capture the last-seen unit so onUnitsChanged can convert chart bounds
     // from the previous unit to the new one and persist the converted value.

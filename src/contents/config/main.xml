@@ -55,5 +55,35 @@
         <entry name="showBasal" type="Bool">
             <default>true</default>
         </entry>
+        <entry name="showPollRing" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="autoRingSize" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="customRingSize" type="Int">
+            <default>24</default>
+        </entry>
+        <entry name="autoFontSize" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="customFontSize" type="Int">
+            <default>14</default>
+        </entry>
+        <entry name="boldText" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="matchTrendSize" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="customTrendSize" type="Int">
+            <default>14</default>
+        </entry>
+        <entry name="itemSpacing" type="Int">
+            <default>4</default>
+        </entry>
+        <entry name="horizontalMargin" type="Int">
+            <default>2</default>
+        </entry>
     </group>
 </kcfg>
