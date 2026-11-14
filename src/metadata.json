@@ -20,7 +20,7 @@
         "Id": "org.kde.plasma.nightscoutwidget",
         "License": "GPL-3.0",
         "Name": "Nightscout Widget",
-        "Version": "2.4.0",
+        "Version": "2.5.0",
         "Website": "https://github.com/imjustarandomguy/nightscout-widget-kde",
         "BugReportUrl": "https://github.com/imjustarandomguy/nightscout-widget-kde/issues"
     },
